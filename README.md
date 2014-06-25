@@ -33,8 +33,9 @@ Once your classes are defined, you can create a main_training.py file to train y
 
 ```python
 from nn.utils.utilities import load_config
-from database_mnist import DataBaseMNIST
 from nn.training.trainer import Trainer
+from network_mnist import NetworkMNIST
+from database_mnist import DataBaseMNIST
 
 if __name__ == '__main__':
 
@@ -47,7 +48,7 @@ if __name__ == '__main__':
 
     ### Create the network
     net = NetworkMNIST()
-    net.init(n_in=29**2, n_out=139)
+    net.init(n_in=28**2, n_out=10)
     print net
 
     ### Train the network
