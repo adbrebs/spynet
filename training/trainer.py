@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import theano
 import theano.tensor as T
 
-from nn.utils.utilities import analyse_targets
+from spynet.utils.utilities import analyse_targets
 import learning_update
 
 

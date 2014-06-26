@@ -7,7 +7,7 @@ import theano
 from theano.tensor.signal import downsample
 from theano.tensor.nnet import conv, conv3d2d
 
-from nn.utils.utilities import share, get_h5file_data
+from spynet.utils.utilities import share, get_h5file_data
 from max_pool_3d import max_pool_3d
 
 

@@ -3,8 +3,8 @@ __author__ = 'adeb'
 from shutil import copy2
 import inspect
 
-from nn.utils.utilities import create_directories
-from nn.models.network import lookup_network
+from spynet.utils.utilities import create_directories
+from spynet.models.network import lookup_network
 
 
 ############################################################

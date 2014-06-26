@@ -1,9 +1,9 @@
 __author__ = 'adeb'
 
-from nn.utils.utilities import load_config
+from spynet.utils.utilities import load_config
 from data_brain_parcellation import DataBaseBrainParcellation
-from network_brain_parcellation import Network1
-from nn.training.trainer import Trainer
+from spynet.models.network import Network1
+from spynet.training.trainer import Trainer
 
 
 if __name__ == '__main__':

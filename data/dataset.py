@@ -6,7 +6,7 @@ from datetime import datetime
 import h5py
 import numpy as np
 
-from nn.utils.utilities import open_h5file
+from spynet.utils.utilities import open_h5file
 
 
 class Dataset():

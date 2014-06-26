@@ -3,11 +3,11 @@ __author__ = 'adeb'
 import sys
 import h5py
 
-from nn.utils.utilities import get_h5file_attribute
+from spynet.utils.utilities import get_h5file_attribute
 from layer import *
 from layer_block import *
 import neuron_type
-from nn.utils.utilities import open_h5file
+from spynet.utils.utilities import open_h5file
 
 
 class Network(object):

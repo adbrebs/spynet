@@ -2,7 +2,7 @@ __author__ = 'adeb'
 
 import numpy as np
 
-from nn.utils.utilities import distrib_balls_in_bins
+from spynet.utils.utilities import distrib_balls_in_bins
 
 
 def create_pick_voxel(config_ini):

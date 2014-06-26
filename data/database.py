@@ -1,7 +1,7 @@
 __author__ = 'adeb'
 
 
-from nn.utils.utilities import share
+from spynet.utils.utilities import share
 
 
 class DataBase():

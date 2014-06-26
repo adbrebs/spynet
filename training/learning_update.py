@@ -5,7 +5,7 @@ import numpy as np
 
 import theano
 
-from nn.utils.utilities import share
+from spynet.utils.utilities import share
 
 
 def create_learning_update(cfg):
