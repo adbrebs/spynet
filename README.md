@@ -1,6 +1,6 @@
 Neural Networks library on top of Theano
 ==================
-
+            
 Flexible research library implementing basic building blocks of neural networks. In particular, it is easy to:
 - use different neuron models and connections in a same layer
 - share weights between different parts of the architecture
@@ -60,3 +60,8 @@ if __name__ == '__main__':
     ### Save the network
     net.save_parameters(training_cf.net_path)
 ```
+
+Class Diagram
+--------------
+
+https://drive.google.com/file/d/0B7nfeKBWzl-heDJtTnJLNnhHWDA/edit?usp=sharing
