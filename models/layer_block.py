@@ -16,8 +16,9 @@ class LayerBlock():
     Abstract class that represents a function from an input space to an output space.
     It is the building block of a Layer object.
     """
+    name = None
+
     def __init__(self):
-        self.name = None
         self.params = []
 
     def forward(self, x, batch_size):
@@ -52,9 +53,10 @@ class LayerBlockIdentity(LayerBlock):
     """
     Identity function
     """
+    name = "Identity Layer block"
+
     def __init__(self):
         LayerBlock.__init__(self)
-        self.name = "Identity Layer block"
 
     def forward(self, x, batch_size):
         return x
@@ -123,10 +125,11 @@ class LayerBlockFullyConnected(LayerBlockOfNeurons):
     """
     Layer block in which each input is connected to all the block neurons
     """
+    name = "Fully connected layer block"
+
     def __init__(self, neuron_type, n_in, n_out):
         LayerBlockOfNeurons.__init__(self, neuron_type)
 
-        self.name = "Fully connected layer block"
         self.n_in = n_in
         self.n_out = n_out
 
@@ -189,9 +192,10 @@ class LayerBlockConv2D(LayerBlockConv2DAbstract):
     """
     2D convolutional layer block
     """
+    name = "2D convolutional layer block"
+
     def __init__(self, neuron_type, in_shape, flt_shape):
         LayerBlockConv2DAbstract.__init__(self, neuron_type, in_shape, flt_shape)
-        self.name = "2D convolutional layer block"
 
     def compute_bound_parameters_virtual(self):
         fan_in = np.prod(self.filter_shape[1:])
@@ -208,10 +212,11 @@ class LayerBlockConvPool2D(LayerBlockConv2DAbstract):
     2D convolutional layer + pooling layer. The reason for not having a separate pooling layer is that the combination
     of the two layer blocks can be optimized.
     """
+    name = "2D convolutional + pooling layer"
+
     def __init__(self, neuron_type, in_shape, flt_shape, poolsize=(2, 2)):
         self.poolsize = poolsize
         LayerBlockConv2DAbstract.__init__(self, neuron_type, in_shape, flt_shape)
-        self.name = "2D convolutional + pooling layer"
 
     def compute_bound_parameters_virtual(self):
         fan_in = np.prod(self.filter_shape[1:])
@@ -235,6 +240,8 @@ class LayerBlockConvPool3D(LayerBlockOfNeurons):
     """
     3D convolutional layer block + pooling layer block
     """
+    name = "3D convolutional + pooling layer block"
+
     def __init__(self, neuron_type, in_channels, in_shape, flt_channels, flt_shape, poolsize):
         """
         Args:
@@ -247,7 +254,6 @@ class LayerBlockConvPool3D(LayerBlockOfNeurons):
             poolsize (tuple of length 3): window of the pooling operation
         """
         LayerBlockOfNeurons.__init__(self, neuron_type)
-        self.name = "3D convolutional + pooling layer block"
 
         in_width, in_height, in_depth = self.in_shape = in_shape
         flt_width, flt_height, flt_depth = self.flt_shape = flt_shape

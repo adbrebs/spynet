@@ -7,8 +7,10 @@ class NeuronType():
     """
     Abstract class defining a neuron type. This class defines the activation function of the neuron.
     """
+    name = None
+
     def __init__(self):
-        self.name = None
+        pass
 
     def activation_function(self, x):
         raise NotImplementedError
@@ -18,18 +20,20 @@ class NeuronType():
 
 
 class NeuronTanh(NeuronType):
+    name = "Tanh"
+
     def __init__(self):
         NeuronType.__init__(self)
-        self.name = "Tanh"
 
     def activation_function(self, x):
         return T.tanh(x)
 
 
 class NeuronSoftmax(NeuronType):
+    name = "SoftMax"
+
     def __init__(self):
         NeuronType.__init__(self)
-        self.name = "SoftMax"
 
     def activation_function(self, x):
         return T.nnet.softmax(x)
@@ -39,9 +43,10 @@ class NeuronRELU(NeuronType):
     """
     Rectified linear unit
     """
+    name = "RELU"
+
     def __init__(self):
         NeuronType.__init__(self)
-        self.name = "RELU"
 
     def activation_function(self, x):
         return T.switch(x > 0., x, 0)

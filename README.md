@@ -4,6 +4,7 @@ Neural Networks library on top of Theano
 Flexible research library implementing basic building blocks of neural networks. In particular, it is easy to:
 - use different neuron models and connections in a same layer
 - share weights between different parts of the architecture
+- monitor many statistics of the training
 - generate data on the fly while the training is running (not finished yet)
 
 Requirements
@@ -12,7 +13,7 @@ Python packages that you need:
 - theano
 - h5py
 
-Setup your own project
+Set up your own project
 --------------
 Create a folder for your project, say ```./yours/```, and copy the spynet folder in this ```./yours/``` folder 
 so that the hierarchy looks like:
@@ -37,9 +38,9 @@ Your project directory should now looks like that:
 To write the code of your classes Network and Experiment, you take inspiration from MNIST example provided in the spynet
 folder.
 
-MNIST example
+Get started with the MNIST example
 --------------
-An fully-functional experiment example is provided in ```./yours/spynet/mnist_example/*```.  
+An experiment example is provided in ```./yours/spynet/mnist_example/```.  
 The experiment creates a convolutional neural network (similar to LeNet) and train it on the MNIST dataset 
 (http://yann.lecun.com/exdb/mnist/).  
 Just run the file ```./yours/spynet/mnist_example/experiment_mnist.py```.
@@ -47,6 +48,7 @@ Just run the file ```./yours/spynet/mnist_example/experiment_mnist.py```.
 
 Class Diagram
 --------------
+A simplified class diagram is sketched on this page: 
 https://drive.google.com/file/d/0B7nfeKBWzl-heDJtTnJLNnhHWDA/edit?usp=sharing
 
 

@@ -10,9 +10,10 @@ from spynet.utils.utilities import error_rate_symb
 
 class Monitor():
     """
-    Abstract class to monitor a specific statistic related to the training.
+    Abstract class to monitor a specific statistic related to the training of a network.
+
     Attributes:
-        type (string): type of the monitor (defined by the class)
+        type (string): type name of the monitor (defined by the class)
         name (string): name of the monitor (defined by the user)
 
         trainer (Trainer object): Trainer object monitored by the monitor
@@ -25,8 +26,10 @@ class Monitor():
         history (list of 2-tuples): list of tuples (id_minibatch, monitored_value for this minibatch) representing the
             history of records of the monitor
     """
+
+    type = None
+
     def __init__(self, trainer, n_times_per_epoch, name):
-        self.type = None
         self.name = name
 
         self.trainer = trainer
@@ -78,9 +81,10 @@ class MonitorErrorRate(Monitor):
     """
     Monitor that tracks the error rate of the network on a particular dataset
     """
+    type = "Error rate"
+
     def __init__(self, trainer, n_times_per_epoch, name, ds):
         Monitor.__init__(self, trainer, n_times_per_epoch, name)
-        self.type = "Error rate"
 
         self.ds = ds
 

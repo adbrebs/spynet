@@ -5,9 +5,9 @@ import theano.tensor as T
 
 class Layer():
     """
-    This abstract class represents a layer of a neural network. A spynet layer is more general than common definition
-    of a lyer of neurons in the sense that a spynet layer is not necessary composed of neurons. As described in the
-    child classes, a spynet layer can merge or divide the inputs.
+    This abstract class represents a layer of a neural network. A spynet layer is more general than the common
+    definition of a layer of neurons in the sense that a spynet layer is not necessary composed of neurons. As
+    described in the child classes, a spynet layer can simply merge or divide the inputs.
     """
     def __init__(self):
         self.params = []

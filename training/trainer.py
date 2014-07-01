@@ -5,16 +5,14 @@ import time
 import theano
 import theano.tensor as T
 
-from spynet.training import learning_update
-
 
 class Trainer():
     """
-    Class that manages the training of a neural network
+    Class that supervises the training of a neural network.
 
     Attributes:
         net (Network object): the network to be trained
-        ds_training (Dataset object): the dataset on which to train the network
+        ds_training (Dataset object): the dataset on which the network is trained
         cost_function (CostFunction object): the cost function of the training
 
         batch_size (int): number of training datapoints to include in a training batch

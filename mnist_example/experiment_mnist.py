@@ -8,8 +8,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 from shutil import copy2
 import inspect
 from spynet.utils.utilities import analyse_classes
-from spynet.data.dataset import DatasetWithOutputs
-from spynet.data.dataset import split_dataset
+from spynet.data.dataset import Dataset
 from spynet.mnist_example.network_mnist import NetworkMNIST
 from spynet.training.trainer import *
 from spynet.training.monitor import *
@@ -17,6 +16,7 @@ from spynet.training.stopping_criterion import *
 from spynet.training.cost_function import *
 from spynet.training.learning_update import *
 from spynet.experiment import Experiment
+from transform_mnist_to_h5 import transform_mnist_to_h5
 
 
 class ExperimentMNIST(Experiment):
@@ -33,12 +33,12 @@ class ExperimentMNIST(Experiment):
         training_data_path = data_path + "train.h5"
         testing_data_path = data_path + "test.h5"
         if not os.path.isfile(training_data_path):
-            import transform_mnist_to_h5
+            transform_mnist_to_h5()
         prop_validation = 0.3  # Percentage of the training dataset that is used for validation (early stopping)
-        ds_training = DatasetWithOutputs()
+        ds_training = Dataset()
         ds_training.read(training_data_path)
-        ds_validation, ds_training = split_dataset(ds_training, prop_validation)
-        ds_testing = DatasetWithOutputs()
+        ds_validation, ds_training = ds_training.split_dataset(prop_validation)
+        ds_testing = Dataset()
         ds_testing.read(testing_data_path)
         # Few stats about the targets
         analyse_classes(np.argmax(ds_training.outputs, axis=1))
