@@ -8,12 +8,13 @@ from theano.tensor.signal import downsample
 from theano.tensor.nnet import conv, conv3d2d
 
 from spynet.utils.utilities import share, get_h5file_data
-from max_pool_3d import max_pool_3d
+from spynet.models.max_pool_3d import max_pool_3d
 
 
 class LayerBlock():
     """
-    Abstract class that represents a function. It is the building block of a layer
+    Abstract class that represents a function from an input space to an output space.
+    It is the building block of a Layer object.
     """
     def __init__(self):
         self.name = None
@@ -41,6 +42,9 @@ class LayerBlock():
         pass
 
     def __str__(self):
+        """
+        Should end with \n.
+        """
         raise NotImplementedError
 
 
@@ -56,7 +60,7 @@ class LayerBlockIdentity(LayerBlock):
         return x
 
     def __str__(self):
-        msg = "[{}]] \n".format(self.name)
+        msg = "[{}] \n".format(self.name)
         return msg
 
 
@@ -117,7 +121,7 @@ class LayerBlockOfNeurons(LayerBlock):
 
 class LayerBlockFullyConnected(LayerBlockOfNeurons):
     """
-    Layer block in which each input is connected to all the layer neurons
+    Layer block in which each input is connected to all the block neurons
     """
     def __init__(self, neuron_type, n_in, n_out):
         LayerBlockOfNeurons.__init__(self, neuron_type)
@@ -142,30 +146,31 @@ class LayerBlockConv2DAbstract(LayerBlockOfNeurons):
     """
     Abstract class defining common components of LayerConv2D and LayerConvPool2D
     """
-    def __init__(self, neuron_type, image_shape, filter_shape):
+    def __init__(self, neuron_type, in_shape, flt_shape):
         """
         Args:
-            image_shape (tuple or list of length 3):
+            in_shape (tuple or list of length 3):
             (num input feature maps, image height, image width)
 
-            filter_shape (tuple or list of length 4):
+            flt_shape (tuple or list of length 4):
             (number of filters, num input feature maps, filter height, filter width)
         """
         LayerBlockOfNeurons.__init__(self, neuron_type)
 
-        self.image_shape = image_shape
-        self.filter_shape = filter_shape
+        self.in_shape = in_shape
+        self.filter_shape = flt_shape
 
-        assert image_shape[0] == filter_shape[1]
+        if in_shape[0] != flt_shape[1]:
+            raise Exception("The number of feature maps is not consistent")
 
-        self.init_parameters(filter_shape, (filter_shape[0],))
+        self.init_parameters(flt_shape, (flt_shape[0],))
 
     def forward(self, x, batch_size):
-        img_batch_shape = (batch_size,) + self.image_shape
+        img_batch_shape = (batch_size,) + self.in_shape
 
         x = x.reshape(img_batch_shape)
 
-        # convolve input feature maps with filters
+        # Convolve input feature maps with filters
         conv_out = conv.conv2d(input=x,
                                filters=self.w,
                                image_shape=img_batch_shape,
@@ -177,15 +182,15 @@ class LayerBlockConv2DAbstract(LayerBlockOfNeurons):
         raise NotImplementedError
 
     def print_virtual(self):
-        return "Image shape: {}\nFilter shape: {}\n".format(self.image_shape, self.filter_shape)
+        return "Image shape: {}\nFilter shape: {}\n".format(self.in_shape, self.filter_shape)
 
 
 class LayerBlockConv2D(LayerBlockConv2DAbstract):
     """
     2D convolutional layer block
     """
-    def __init__(self, neuron_type, image_shape, filter_shape):
-        LayerBlockConv2DAbstract.__init__(self, neuron_type, image_shape, filter_shape)
+    def __init__(self, neuron_type, in_shape, flt_shape):
+        LayerBlockConv2DAbstract.__init__(self, neuron_type, in_shape, flt_shape)
         self.name = "2D convolutional layer block"
 
     def compute_bound_parameters_virtual(self):
@@ -201,11 +206,11 @@ class LayerBlockConv2D(LayerBlockConv2DAbstract):
 class LayerBlockConvPool2D(LayerBlockConv2DAbstract):
     """
     2D convolutional layer + pooling layer. The reason for not having a separate pooling layer is that the combination
-    of the two layers can be optimized.
+    of the two layer blocks can be optimized.
     """
-    def __init__(self, neuron_type, image_shape, filter_shape, poolsize=(2, 2)):
+    def __init__(self, neuron_type, in_shape, flt_shape, poolsize=(2, 2)):
         self.poolsize = poolsize
-        LayerBlockConv2DAbstract.__init__(self, neuron_type, image_shape, filter_shape)
+        LayerBlockConv2DAbstract.__init__(self, neuron_type, in_shape, flt_shape)
         self.name = "2D convolutional + pooling layer"
 
     def compute_bound_parameters_virtual(self):
@@ -215,7 +220,7 @@ class LayerBlockConvPool2D(LayerBlockConv2DAbstract):
         return np.sqrt(6. / (fan_in + fan_out))
 
     def forward_virtual(self, conv_out):
-        # downsample each feature map individually, using maxpooling
+        # Downsample each feature map individually, using maxpooling
         pooled_out = downsample.max_pool_2d(input=conv_out,
                                             ds=self.poolsize,
                                             ignore_border=True)
@@ -228,23 +233,24 @@ class LayerBlockConvPool2D(LayerBlockConv2DAbstract):
 
 class LayerBlockConvPool3D(LayerBlockOfNeurons):
     """
-    3D convolutional layer + pooling layer
+    3D convolutional layer block + pooling layer block
     """
-    def __init__(self, neuron_type, in_channels, in_shape,
-                 flt_channels, flt_shape, poolsize):
+    def __init__(self, neuron_type, in_channels, in_shape, flt_channels, flt_shape, poolsize):
         """
         Args:
-            image_shape (tuple or list of length 4):
-            (image depth, num input feature maps, image height, image width)
+            in_channels (int): number of input channels
+            in_shape (tuple of length 3): shape of the input (in_width, in_height, in_depth)
 
-            filter_shape (tuple or list of length 5):
-            (number of filters, filter depth, num input feature maps, filter height,filter width)
+            flt_channels (int):
+            flt_shape (tuple of length 3): shape of the filters (flt_depth, flt_height, flt_width)
+
+            poolsize (tuple of length 3): window of the pooling operation
         """
         LayerBlockOfNeurons.__init__(self, neuron_type)
         self.name = "3D convolutional + pooling layer block"
 
         in_width, in_height, in_depth = self.in_shape = in_shape
-        flt_depth, flt_height, flt_width = self.flt_shape = flt_shape
+        flt_width, flt_height, flt_depth = self.flt_shape = flt_shape
         self.in_channels = in_channels
         self.flt_channels = flt_channels
 
@@ -265,14 +271,14 @@ class LayerBlockConvPool3D(LayerBlockOfNeurons):
 
         x = x.reshape(img_batch_shape)
 
-        # convolve input feature maps with filters
+        # Convolve input feature maps with filters
         conv_out = conv3d2d.conv3d(signals=x,
                                    filters=self.w,
                                    signals_shape=img_batch_shape,
                                    filters_shape=self.filter_shape,
                                    border_mode='valid')
 
-        perm = [0, 2, 1, 3, 4]
+        perm = [0, 2, 1, 3, 4]  # Permutation is needed due to the pooling function prototype
         pooled_out = max_pool_3d(conv_out.dimshuffle(perm), self.poolsize, ignore_border=True)
 
         return self.neuron_type.activation_function(pooled_out.dimshuffle(perm)

@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import theano
+import theano.tensor as T
 import nibabel as nib
 
 
@@ -29,9 +30,6 @@ def load_config(default_file):
 
 def create_directories(folder_name):
     # Create directories if they don't exist
-    data_dir = "./datasets"
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
     exp_dir = "./experiments/" + folder_name + "/"
     if not os.path.exists(exp_dir):
         os.makedirs(exp_dir)
@@ -97,26 +95,24 @@ def create_img_from_pred(vx, pred, shape):
     return pred_img
 
 
-def analyse_targets(targets_scalar, verbose=True):
+def analyse_classes(targets_scalar, verbose=True):
     """
-    Compute various statistics about targets.
+    Compute various statistics about targets in a classification problem. The target of a point has to be an integer
+    value.
     """
-
-    targets_scalar = targets_scalar[targets_scalar.nonzero()]
-
     a = np.bincount(targets_scalar)
     classes = np.nonzero(a)[0]
     n_classes = len(classes)
     if verbose:
-        print("There are {} regions in the dataset".format(n_classes))
-    proportion_volumes = a[classes].astype(float, copy=False)
-    proportion_volumes /= sum(proportion_volumes)
+        print("There are {} target classes in the dataset".format(n_classes))
+    proportion_class = a[classes].astype(float, copy=False)
+    proportion_class /= sum(proportion_class)
 
     if verbose:
-        print("    The largest region represents {} % of the image".format(max(proportion_volumes) * 100))
-        print("    The smallest region represents {} % of the image".format(min(proportion_volumes) * 100))
+        print("    The largest class represents {} % of the data".format(max(proportion_class) * 100))
+        print("    The smallest class represents {} % of the data".format(min(proportion_class) * 100))
 
-    return classes, proportion_volumes
+    return classes, proportion_class
 
 
 def compute_dice(img_pred, img_true, n_classes_max):
@@ -137,11 +133,33 @@ def compute_dice(img_pred, img_true, n_classes_max):
     return dices
 
 
+def compute_dice_symb(vec_pred, vec_true, n_classes_max):
+    """
+    Compute the DICE score between two segmentations in theano
+    """
+    vec_pred = vec_pred.dimshuffle((0, 'x'))
+    vec_true = vec_true.dimshuffle((0, 'x'))
+
+    classes = theano.shared(np.arange(1, n_classes_max))  # Start from 1 because we don't consider 0
+    classes = classes.dimshuffle(('x', 0))
+
+    binary_pred = T.cast(T.eq(vec_pred, classes), theano.config.floatX)
+    binary_true = T.cast(T.eq(vec_true, classes), theano.config.floatX)
+    binary_common = binary_pred * binary_true
+
+    binary_pred_sum = T.sum(binary_pred, axis=0)
+    binary_true_sum = T.sum(binary_true, axis=0)
+    binary_common_sum = T.sum(binary_common, axis=0)
+    no_zero = binary_common_sum.nonzero()
+
+    return 2 * binary_common_sum[no_zero] / (binary_pred_sum[no_zero] + binary_true_sum[no_zero])
+
+
 def compare_two_seg(pred_seg_path, true_seg_path):
     pred_seg = nib.load(pred_seg_path).get_data().squeeze()
     true_seg = nib.load(true_seg_path).get_data().squeeze()
 
-    classes, true_volumes = analyse_targets(np.ravel(true_seg))
+    classes, true_volumes = analyse_classes(np.ravel(true_seg))
     dices = compute_dice(pred_seg, true_seg, len(classes)+1)
     dices = dices[1:]
 
@@ -158,3 +176,19 @@ def compare_two_seg(pred_seg_path, true_seg_path):
     plt.xlabel('Sorted indices of the regions (the higher the bigger the region)')
     plt.ylabel('Dice coefficient of the sorted region')
     plt.savefig("./analysis/dices_sorted.png")
+
+
+def error_rate_symb(y1, y2):
+    """Return the symbolic error rate
+    Args:
+        y1, y2 (theano.tensor.TensorType): 2D arrays to compare. Each row represents a point and each column a class.
+    """
+    return T.mean(T.neq(T.argmax(y1, axis=1), T.argmax(y2, axis=1)))
+
+
+def error_rate(y1, y2):
+    """Return the numpy error rate
+    Args:
+        y1, y2 (numpy 2D array): 2D arrays to compare. Each row represents a point and each column a class.
+    """
+    return np.mean(np.argmax(y1, axis=1) != np.argmax(y2, axis=1))

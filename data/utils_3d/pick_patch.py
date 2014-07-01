@@ -70,49 +70,62 @@ class PickPatchParallelOrthogonal(PickPatch2D):
     """
     Pick a 2D patch centered on the voxels. No rotation
     """
-    def __init__(self, patch_width, parallel_axis):
+    def __init__(self, patch_width, orthogonal_axis):
         PickPatch2D.__init__(self, patch_width)
-        self.parallel_axis = parallel_axis
+        self.orhtogonal_axis = orthogonal_axis
 
     def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
         dims = mri.shape
         radius = self.patch_width / 2
 
-        def crop(j, voxel):
-            v = np.arange(voxel[j] - radius, voxel[j] + radius + 1)
-            v[v < 0] = 0
-            v[v >= dims[j]] = dims[j]-1
-            return v
+        def find_limits_along_axis(axis):
+            s1_inf = vx[:, axis] - radius
+            s1_sup = vx[:, axis] + radius + 1
+            s2_inf = np.zeros(s1_inf.shape, dtype=s1_inf.dtype)
+            s2_sup = self.patch_width * np.ones(s1_inf.shape, dtype=s1_inf.dtype)
+
+            # Too low
+            s1_too_low = s1_inf < 0
+            s2_inf[s1_too_low] = -s1_inf[s1_too_low]
+            s1_inf[s1_too_low] = 0
+
+            # Too high
+            s1_too_high = s1_sup > dims[axis]
+            s2_sup[s1_too_high] = self.patch_width - (s1_sup[s1_too_high] - dims[axis])
+            s1_sup[s1_too_high] = dims[axis]
+
+            assert (s1_sup - s1_inf == s2_sup - s2_inf).all()
+
+            return s1_inf, s1_sup, s2_inf, s2_sup
+
+        parallel_axis = range(3)
+        del parallel_axis[self.orhtogonal_axis]
+        s1_inf_0, s1_sup_0, s2_inf_0, s2_sup_0 = find_limits_along_axis(parallel_axis[0])
+        s1_inf_1, s1_sup_1, s2_inf_1, s2_sup_1 = find_limits_along_axis(parallel_axis[1])
 
         for i in xrange(idx_patch.shape[0]):
-            vx_cur = vx[i]
-            v_parallel_axis = vx_cur[self.parallel_axis]
-            v_other_axis = []
-            l = range(3)
-            del l[self.parallel_axis]
-            for ax in l:
-                v_other_axis.append(crop(ax, vx_cur))
 
-            a, b = np.meshgrid(v_other_axis[0], v_other_axis[1])
-            l2 = [0]*3
-            l2[l[0]] = a.ravel()
-            l2[l[1]] = b.ravel()
-            l2[self.parallel_axis] = np.tile(v_parallel_axis, a.size)
-            idx_patch[i] = np.ravel_multi_index(tuple(l2), dims)
-            l3 = [0]*3
-            l3[l[0]] = a.ravel()
-            l3[l[1]] = b.ravel()
-            l3[self.parallel_axis] = np.tile(v_parallel_axis, a.size)
-            patch[i] = mri[tuple(l3)].ravel()
+            s1 = [0]*3
+            s1[self.orhtogonal_axis] = vx[i, self.orhtogonal_axis]
+            s1[parallel_axis[0]] = slice(s1_inf_0[i], s1_sup_0[i])
+            s1[parallel_axis[1]] = slice(s1_inf_1[i], s1_sup_1[i])
+
+            s2 = [0]*2
+            s2[0] = slice(s2_inf_0[i], s2_sup_0[i])
+            s2[1] = slice(s2_inf_1[i], s2_sup_1[i])
+
+            patch_temp = np.zeros((self.patch_width,)*2)
+            patch_temp[s2[0], s2[1]] = mri[s1[0], s1[1], s1[2]]
+            patch[i, :] = patch_temp.ravel()
 
 
 class PickPatchSlightlyRotated(PickPatch2D):
     """
     Pick a 2D patch centered on the voxels. Brains are slightly rotated.
     """
-    def __init__(self, patch_width, parallel_axis, max_degree_rotation):
+    def __init__(self, patch_width, orhtogonal_axis, max_degree_rotation):
         PickPatch2D.__init__(self, patch_width)
-        self.parallel_axis = parallel_axis
+        self.orthogonal_axis = orhtogonal_axis
         self.max_degree_rotation = max_degree_rotation
 
     def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
@@ -154,8 +167,8 @@ class PickPatchSlightlyRotated(PickPatch2D):
             central_vx_cube = np.array(cube.shape)/2
             li = central_vx_cube - radius
             ls = central_vx_cube + radius + 1
-            li[self.parallel_axis] = central_vx_cube[self.parallel_axis]
-            ls[self.parallel_axis] = central_vx_cube[self.parallel_axis]+1
+            li[self.orthogonal_axis] = central_vx_cube[self.orthogonal_axis]
+            ls[self.orthogonal_axis] = central_vx_cube[self.orthogonal_axis]+1
 
             patch[i] = cube[li[0]:ls[0], li[1]:ls[1], li[2]:ls[2]].ravel()
 
@@ -209,12 +222,11 @@ class PickUltimate(PickInput):
     An input is composed of three orthogonal patches and the three coordinates of the central voxel.
     """
     def __init__(self, patch_width):
-        PickInput.__init__(self, 3 * patch_width**2 + 3)
+        PickInput.__init__(self, 3 * patch_width**2)
         self.patch_width = patch_width
-        self.pick_xyz = PickXYZ()
-        self.pick_axis0 = PickPatchSlightlyRotated(patch_width, 0, 20)
-        self.pick_axis1 = PickPatchSlightlyRotated(patch_width, 1, 20)
-        self.pick_axis2 = PickPatchSlightlyRotated(patch_width, 2, 20)
+        self.pick_axis0 = PickPatchParallelOrthogonal(patch_width, 0)
+        self.pick_axis1 = PickPatchParallelOrthogonal(patch_width, 1)
+        self.pick_axis2 = PickPatchParallelOrthogonal(patch_width, 2)
 
     def pick(self, vx, mri, label):
         n_vx = vx.shape[0]
@@ -228,7 +240,5 @@ class PickUltimate(PickInput):
         patch[:,s1], idx_patch[:,s1] = self.pick_axis1.pick(vx, mri, label)
         s2 = slice(2*temp, 3*temp)
         patch[:,s2], idx_patch[:,s2] = self.pick_axis2.pick(vx, mri, label)
-        s3 = slice(3*temp, 3*temp+3)
-        patch[:,s3], idx_patch[:,s3] = self.pick_xyz.pick(vx, mri, label)
 
         return patch, idx_patch

@@ -1,244 +1,143 @@
 __author__ = 'adeb'
 
-import sys
 import time
-import math
-import numpy as np
 
-import matplotlib
-matplotlib.use('Agg')
-from matplotlib import pyplot as plt
 import theano
 import theano.tensor as T
 
-from spynet.utils.utilities import analyse_targets
-import learning_update
+from spynet.training import learning_update
 
 
 class Trainer():
-    def __init__(self, config, net, ds, scale=True):
-        print '... configure training'
+    """
+    Class that manages the training of a neural network
+
+    Attributes:
+        net (Network object): the network to be trained
+        ds_training (Dataset object): the dataset on which to train the network
+        cost_function (CostFunction object): the cost function of the training
+
+        batch_size (int): number of training datapoints to include in a training batch
+        n_train_batches (int): number of batches that the dataset contains
+
+        ls_monitors (list of Monitor objects): each monitor tracks a particular statistic of the training
+        ls_stopping_criteria (list of StoppingCriterion objects): stopping criteria that decide when to
+            stop the training
+
+        train_minibatch (function): function to train the network on a single minibatch
+    """
+    def __init__(self, net, cost_function, learning_update, ds_training, batch_size):
+        print 'Configure training ...'
 
         self.net = net
-        self.experiment_path = config.experiment_path
+        self.ds_training = ds_training
 
-        analyse_targets(np.argmax(ds.train_out.get_value(), axis=1))
+        self.ls_monitors = []
+        self.ls_stopping_criteria = []
 
-        # Scale the data
-        if scale:
-            net.create_scaling_from_raw_database(ds)
-            net.scale_database(ds)
+        self.batch_size = batch_size
+        self.n_train_batches = ds_training.n_data / self.batch_size
 
-        self.patience_increase = config.patience_increase
-        self.improvement_threshold = config.improvement_threshold
-        self.batch_size = config.batch_size
-        self.learning_rate = config.learning_rate
-        self.n_epochs = config.n_epochs
-
-        self.n_train_batches = ds.n_train / self.batch_size
-        self.n_valid_batches = ds.n_valid / self.batch_size
-        self.n_test_batches = ds.n_test / self.batch_size
-
-        x = T.matrix('x')  # Minibatch input matrix
-        y_true = T.matrix('y_true')  # True output of a minibatch
-
-        # Outpurt of the network
-        y_pred = net.forward([x], self.batch_size)[0]
+        self.in_batch = in_batch = T.matrix('in_batch')  # Minibatch input matrix
+        self.tg_batch = tg_batch = T.matrix('tg_batch')  # True output (target) of a minibatch
+        # Predicted output of the network for an input batch
+        self.pred_batch = pred_batch = net.forward(in_batch, self.batch_size)
 
         # Cost the trainer is going to minimize
-        cost = self.mse_symb(y_pred, y_true)
+        self.cost_function = cost_function
+        cost = cost_function.compute_cost_symb(pred_batch, tg_batch)
 
         # Compute gradients
-        params = net.params
+        params = net.ls_params
         grads = T.grad(cost, params)
 
         # Compute updates
-        lr_update = learning_update.create_learning_update(config)
-        updates = lr_update.compute_updates(params, grads)
+        self.learning_update = learning_update
+        updates = learning_update.compute_updates(params, grads)
 
         idx_batch = T.lscalar()
         id1 = idx_batch * self.batch_size
         id2 = (idx_batch + 1) * self.batch_size
-        self.testing_error = theano.function(
-            inputs=[idx_batch],
-            outputs=self.error_rate_symb(y_pred, y_true),
-            givens={x: ds.test_in[id1:id2], y_true: ds.test_out[id1:id2]})
-
-        self.validation_error = theano.function(
-            inputs=[idx_batch],
-            outputs=self.error_rate_symb(y_pred, y_true),
-            givens={x: ds.valid_in[id1:id2], y_true: ds.valid_out[id1:id2]})
-
-        self.training_error = theano.function(
-            inputs=[idx_batch],
-            outputs=self.error_rate_symb(y_pred, y_true),
-            givens={x: ds.train_in[id1:id2], y_true: ds.train_out[id1:id2]})
-
-        self.train_model = theano.function(
+        in_train = ds_training.inputs_shared
+        out_train = ds_training.outputs_shared
+        self.train_minibatch = theano.function(
             inputs=[idx_batch],
             outputs=cost,
             updates=updates,
-            givens={x: ds.train_in[id1:id2], y_true: ds.train_out[id1:id2]})
+            givens={in_batch: in_train[id1:id2], tg_batch: out_train[id1:id2]})
 
-    @staticmethod
-    def mse_symb(y_pred, y_true):
-        """Return the mean square error
-        Args:
-            y_pred (theano.tensor.TensorType): output returned by a network
-            y_pred (theano.tensor.TensorType): output returned by a network
-        """
-        return T.mean(T.sum((y_pred - y_true) * (y_pred - y_true), axis=1))
+    def add_monitors(self, ls_monitors):
+        self.ls_monitors.extend(ls_monitors)
 
-    @staticmethod
-    def error_rate_symb(y_pred, y_true):
-        """Return the error rate
-        Args:
-            y_pred (theano.tensor.TensorType): output returned by a network
-            y_pred (theano.tensor.TensorType): output returned by a network
-        """
-        return T.mean(T.neq(T.argmax(y_pred, axis=1), T.argmax(y_true, axis=1)))
+    def add_stopping_criteria(self, ls_stopping_criteria):
+        self.ls_stopping_criteria.extend(ls_stopping_criteria)
 
-    @staticmethod
-    def error_rate(y_pred, y_true):
-        """Return the error rate
-        Args:
-            y_pred (theano.tensor.TensorType): output returned by a network
-            y_pred (theano.tensor.TensorType): output returned by a network
+    def check_if_stop(self, epoch, minibatch_idx, id_minibatch, verbose=True):
         """
-        return np.mean(np.argmax(y_pred, axis=1) != np.argmax(y_true, axis=1))
+        Check if the training should stop
+        """
+        for stopping_cri in self.ls_stopping_criteria:
+            if stopping_cri.check_if_stop(epoch, minibatch_idx, id_minibatch, verbose):
+                return True
+        return False
 
-    @staticmethod
-    def negative_log_likelihood_symb(y_pred, y_true):
-        """Return the negative log-likelihood
-        Args:
-            y_pred (theano.tensor.TensorType): output returned by a network
-            y_pred (theano.tensor.TensorType): output returned by a network
+    def record(self, epoch, minibatch_idx, id_minibatch, verbose=True):
         """
-        return -T.mean(T.sum(T.log(y_pred) * y_true, axis=1))
+        Record statistics about the training.
+        Returns True is at least one value is recorded.
+        """
+        updated_monitors = []  # memorize monitors that record a new value
+        for i, monitor in enumerate(self.ls_monitors):
+            if monitor.record(epoch, minibatch_idx, id_minibatch):
+                updated_monitors.append(i)
 
-    @staticmethod
-    def negative_log_likelihood(y_pred, y_true):
-        """Return the negative log-likelihood
-        Args:
-            y_pred (theano.tensor.TensorType): output returned by a network
-            y_pred (theano.tensor.TensorType): output returned by a network
-        """
-        return -np.mean(np.sum(math.log(y_pred) * y_true, axis=1))
+        if verbose and updated_monitors:
+            print("    minibatch {}/{}:".format(minibatch_idx, self.n_train_batches))
+            for i in updated_monitors:
+                print("        {}".format(self.ls_monitors[i].str_value(-1)))
+
+        if updated_monitors:
+            return True
+        else:
+            return False
 
     def train(self):
-        print '... train the network'
+        print "Train the network ..."
 
         start_time = time.clock()
 
-        # early-stopping parameters
-        patience = 10 * self.n_train_batches  # look as this many minibatches regardless
-        patience_increase = self.patience_increase * self.n_train_batches
-        improvement_threshold = self.improvement_threshold
-        validation_frequency = min(self.n_train_batches, patience / 2)
+        freq_display_batch = max(self.n_train_batches / 4, 1)  # Frequency for printing the batch id
+        epoch_id = minibatch_id = 0
 
-        best_validation_loss = np.inf
-        best_iter = 0
-        test_error = 0.
-        best_params = None
+        # Record statistics before training really starts
+        self.record(epoch_id, 0, minibatch_id)
 
-        freq_display_batch = max(self.n_train_batches / 4, 1)
-        epoch = 0
-        early_stopping = False
-        id_mini_batch = 0
+        stop = False
+        while not stop:
+            starting_epoch_time = time.clock()
+            epoch_id += 1
+            print("Epoch {}".format(epoch_id))
+            for minibatch_index in xrange(1, 1+self.n_train_batches):
 
-        starting_epoch_time = time.clock()
-
-        training_error_records = []
-        testing_error_records = []
-        validation_error_records = []
-
-        # Before starting training, evaluate the initial model
-        self.__save_record(id_mini_batch, 0, self.training_error,
-                           training_error_records, self.n_train_batches, "training error")
-        self.__save_record(id_mini_batch, 0, self.validation_error,
-                           validation_error_records, self.n_valid_batches, "validation error")
-        self.__save_record(id_mini_batch, 0, self.testing_error,
-                           testing_error_records, self.n_test_batches, "test error of the best model so far")
-
-        while (epoch < self.n_epochs) and (not early_stopping):
-            epoch += 1
-            print("epoch {}".format(epoch))
-            for minibatch_index in xrange(self.n_train_batches):
-
-                id_mini_batch += 1
+                minibatch_id += 1
 
                 # Display minibatch number
-                if id_mini_batch % freq_display_batch == 0:
-                    print("    minibatch {}/{}".format(minibatch_index + 1, self.n_train_batches))
+                if minibatch_id % freq_display_batch == 0:
+                    print("    minibatch {}/{}".format(minibatch_index, self.n_train_batches))
 
                 # Train on the current minibatch
-                self.train_model(minibatch_index)
+                self.train_minibatch(minibatch_index-1)
 
-                # Early stopping
-                if patience <= id_mini_batch:
-                    early_stopping = True
+                # Record statistics
+                self.record(epoch_id, minibatch_index, minibatch_id)
+
+                # Check if a stopping criterion is met
+                if self.check_if_stop(epoch_id, 0, minibatch_id):
+                    stop = True
                     break
 
-                if (id_mini_batch + 1) % validation_frequency > 0:
-                    continue
-
-                # Compute the training error and save it
-                self.__save_record(id_mini_batch, minibatch_index, self.training_error,
-                                   training_error_records, self.n_train_batches, "training error")
-
-                # compute validation error
-                valid_error = self.__save_record(id_mini_batch, minibatch_index, self.validation_error,
-                                                 validation_error_records, self.n_valid_batches, "validation error")
-
-                # if we get the lowest validation error until now
-                if valid_error >= best_validation_loss:
-                    continue
-
-                #improve patience if loss improvement is good enough
-                if valid_error < best_validation_loss * improvement_threshold:
-                    patience = id_mini_batch + patience_increase
-
-                # save the lowest validation error
-                best_validation_loss = valid_error
-                best_iter = id_mini_batch
-                best_params = self.net.export_params()
-
-                # test it on the test set
-                test_error = self.__save_record(id_mini_batch, minibatch_index, self.testing_error,
-                                                testing_error_records, self.n_test_batches,
-                                                "test error of the best model so far")
-
-            print("    epoch {} finished after {} seconds".format(epoch, time.clock() - starting_epoch_time))
-            starting_epoch_time = time.clock()
+            if not stop:
+                print("    epoch {} finished after {} seconds".format(epoch_id, time.clock() - starting_epoch_time))
 
         end_time = time.clock()
-        self.net.import_params(best_params)
-        print("Training complete.")
-        print('Best validation error of {} obtained at iteration {} with test performance {}'.format(
-            best_validation_loss, best_iter + 1, test_error))
-        print >> sys.stderr, ("Training ran for {} minutes".format((end_time - start_time) / 60.))
-
-        self.__save_records(self.experiment_path + "t.png",
-                            training_error_records, testing_error_records, validation_error_records)
-
-    def __save_record(self, id_mini_batch, minibatch_index, error_function, error_records, n_batches, name):
-        losses = [error_function(i) for i in xrange(n_batches)]
-        error = np.mean(losses)
-        print("    minibatch {}/{}, {}: {}".format(minibatch_index + 1, self.n_train_batches, error, name))
-        error_records.append((id_mini_batch, error))
-        return error
-
-    @staticmethod
-    def __save_records(file_path, training_error_records, testing_erro_records, validation_error_records):
-
-        def save_error(error, legend):
-            plt.plot(*zip(*error), label=legend)
-
-        save_error(training_error_records, "training data")
-        save_error(testing_erro_records, "testing data")
-        save_error(validation_error_records, "validation data")
-
-        plt.xlabel('Minibatch index')
-        plt.ylabel('Error rate')
-        plt.legend(loc='upper right')
-        plt.savefig(file_path)
+        print ("Training ran for {} minutes".format((end_time - start_time) / 60.))

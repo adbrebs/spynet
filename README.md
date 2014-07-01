@@ -12,56 +12,42 @@ Python packages that you need:
 - theano
 - h5py
 
-Setup
+Setup your own project
 --------------
-
-Create a folder for your project, say /mnist/, and copy the spynet folder in this /mnist/ folder so that the hierarchy looks like:
+Create a folder for your project, say ```./yours/```, and copy the spynet folder in this ```./yours/``` folder 
+so that the hierarchy looks like:
 ```python
-./mnist/spynet/*
+./yours/spynet/*
 ```
-Then you need to inherit from at least two classes of the library:
-- Network (spynet.models.network.Network) where you define the architecture of your model
-- DataBase (spynet.data.database.DataBase) where you define your training, testing and validation datasets
+Then you need to inherit from at least the two following classes:  
+- Network (spynet.models.network.Network) where you define the architecture of your model  
+- Experiment (spynet.experiment.Experiment) where you define your training experiment, i.e. all the instructions you
+want to run. Its function Experiment.run() will be your main program.
 
-You also need to create your own configuration file for the training. The config file model is found in ./spynet/cfg_training_model.py, copy it into ./mnist/ and rename it to cfg_training.py so your project directory now looks like that:  
-```python
-./mnist/spynet/*  
-./mnist/network_mnist.py  # where your inherit from Network  
-./mnist/database_mnist.py  # where you inherit from DataBase  
-./mnist/cfg_training.py  # a copy of ./spynet/cfg_training_model.py with your own configuration
+You may potentially inherit from Dataset if you need to save additional information about your data:  
+- Dataset (spynet.data.dataset.Dataset) which stores a numpy datasets of inputs and corresponding outputs  
+
+Your project directory should now looks like that:  
 ```
-In order to create your DataBase class, you might find convenient to also inherit from Dataset and DataGenerator.
+./yours/spynet/*  
+./yours/network_yours.py  # where your inherit from Network  
+./yours/experiment_yours.py  # where you inherit from Experiment
+```  
 
-Once your classes are defined, you can create a main_training.py file to train your model. For instance, this file can look like:  
-```python
-from spynet.utils.utilities import load_config
-from spynet.training.trainer import Trainer
-from network_mnist import NetworkMNIST
-from database_mnist import DataBaseMNIST
+To write the code of your classes Network and Experiment, you take inspiration from MNIST example provided in the spynet
+folder.
 
-if __name__ == '__main__':
+MNIST example
+--------------
+An fully-functional experiment example is provided in ```./yours/spynet/mnist_example/*```.  
+The experiment creates a convolutional neural network (similar to LeNet) and train it on the MNIST dataset 
+(http://yann.lecun.com/exdb/mnist/).  
+Just run the file ```./yours/spynet/mnist_example/experiment_mnist.py```.
 
-    ### Load the config file
-    training_cf = load_config("cfg_general")
-
-    ### Create the database
-    db = DataBaseMNIST()
-    db.init(training_cf.prop_validation, training_cf)
-
-    ### Create the network
-    net = NetworkMNIST()
-    net.init(n_in=28**2, n_out=10)
-    print net
-
-    ### Train the network
-    t = Trainer(training_cf, net, db)
-    t.train()
-
-    ### Save the network
-    net.save_parameters(training_cf.net_path)
-```
 
 Class Diagram
 --------------
-
 https://drive.google.com/file/d/0B7nfeKBWzl-heDJtTnJLNnhHWDA/edit?usp=sharing
+
+
+Note: the mnist example and some chunks of code take inspiration from the theano tutorials on deeplearning.net
