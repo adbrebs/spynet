@@ -39,7 +39,7 @@ class EarlyStopping(StoppingCriterion):
     Stopping criterion monitoring a monitor. When the monitored value changes, the monitor updates the EarlyStopping
     object.
     """
-    def __init__(self, trainer, monitor, patience_increase=5, improvement_threshold=0.99, initial_patience=5):
+    def __init__(self, trainer, monitor, patience_increase=5, improvement_threshold=0.95, initial_patience=5):
         StoppingCriterion.__init__(self, trainer)
         self.monitor = monitor
 

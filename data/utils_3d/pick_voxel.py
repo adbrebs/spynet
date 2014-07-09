@@ -41,16 +41,19 @@ class PickVoxel():
     """
     Manage the selection and extraction of voxels in an mri image
     """
-    def __init__(self, select_region, extract_voxel):
+    def __init__(self, select_region, extract_voxel, batch_size=10000):
         self.select_region = select_region
         self.extract_voxel = extract_voxel
+        self.batch_size = batch_size
 
-    def pick(self, n_vx, label):
+    def pick(self, n_vx, label, verbose=False):
         # Select the region in which voxels are going to be extracted
         idx_region = self.select_region.select(label)
         region = label.ravel()[idx_region]
         # Once the region is selected, extract the voxels
-        return self.extract_voxel.extract(n_vx, idx_region, region, label.shape)
+        if n_vx is None:
+            n_vx = len(idx_region)
+        return self.extract_voxel.extract(n_vx, idx_region, region, label.shape, self.batch_size, verbose)
 
 
 class SelectRegion():
@@ -100,17 +103,27 @@ class ExtractVoxel():
     def __init__(self, n_repeat):
         self.n_repeat = n_repeat
 
-    def extract(self, n_vx, idx_region, region, shape):
-        vx_idx = self.extract_virtual(n_vx, idx_region, region)
+    def extract(self, n_vx, idx_region, region, shape, batch_size, verbose=False):
+        n_batches, last_batch_size = divmod(n_vx, batch_size)
 
-        # Duplicate the indices of the voxels
-        if self.n_repeat > 1:
-            vx_idx = np.repeat(vx_idx, self.n_repeat)
+        def extract_inner(vx_id, batch_size_inner):
+            vx_idx = self.extract_batch_virtual(vx_id, batch_size_inner, idx_region, region)
+            if self.n_repeat > 1:
+                vx_idx = np.repeat(vx_idx, self.n_repeat)
+            return np.asarray(np.unravel_index(vx_idx, shape), dtype=int).T
 
-        # Return the voxels
-        return np.asarray(np.unravel_index(vx_idx, shape), dtype=int).T
+        for b in xrange(n_batches):
+            vx_id = b*batch_size
+            if verbose:
+                print "        voxels [{} - {}] / {}".format(vx_id, vx_id + batch_size, n_vx)
+            yield extract_inner(vx_id, batch_size)
 
-    def extract_virtual(self, n_vx, idx_region, region):
+        vx_id = n_batches*batch_size
+        if verbose:
+            print "        voxels [{} - {}] / {}".format(vx_id, vx_id + last_batch_size, n_vx)
+        yield extract_inner(vx_id, last_batch_size)
+
+    def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
         raise NotImplementedError
 
 
@@ -121,8 +134,8 @@ class ExtractVoxelRandomly(ExtractVoxel):
     def __init__(self, n_repeat):
         ExtractVoxel.__init__(self, n_repeat)
 
-    def extract_virtual(self, n_vx, idx_region, region):
-        r = np.random.randint(idx_region.size, size=n_vx)
+    def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
+        r = np.random.randint(idx_region.size, size=batch_size)
         return idx_region[r]
 
 
@@ -133,13 +146,13 @@ class ExtractVoxelBalanced(ExtractVoxel):
     def __init__(self, n_repeat):
         ExtractVoxel.__init__(self, n_repeat)
 
-    def extract_virtual(self, n_vx, idx_region, region):
-        vx_idx = np.zeros((n_vx,), dtype=int)
+    def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
+        vx_idx = np.zeros((batch_size,), dtype=int)
 
         # Compute the number of voxels for each region
         classes_present = np.unique(region)
         n_classes_present = len(classes_present)
-        voxels_per_region = distrib_balls_in_bins(n_vx, n_classes_present)
+        voxels_per_region = distrib_balls_in_bins(batch_size, n_classes_present)
 
         vx_counter = 0
         for id_k, k in enumerate(classes_present):
@@ -161,30 +174,5 @@ class ExtractVoxelAll(ExtractVoxel):
     def __init__(self, n_repeat):
         ExtractVoxel.__init__(self, n_repeat)
 
-    def extract_virtual(self, n_vx, idx_region, region):
-        return idx_region
-
-
-class ExtractVoxelAllBuffer(ExtractVoxel):
-    """
-    Extract all the possible voxels from the mri region
-    """
-    def __init__(self, n_repeat):
-        ExtractVoxel.__init__(self, n_repeat)
-        self.cur_idx = 0
-
-    def reset(self):
-        self.cur_idx = 0
-
-    def extract_virtual(self, n_vx, idx_region, region):
-        is_entirely_scanned = False
-        next_idx = self.cur_idx + n_vx
-
-        if len(idx_region) > next_idx:
-            vx_idx = idx_region[self.cur_idx:]
-            is_entirely_scanned = True
-        else:
-            vx_idx = idx_region[self.cur_idx: next_idx]
-            self.cur_idx = next_idx
-
-        return is_entirely_scanned, idx_region
+    def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
+        return idx_region[vx_id:vx_id+batch_size]
