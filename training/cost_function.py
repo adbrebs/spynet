@@ -65,7 +65,7 @@ class CostNegLL(CostFunction):
         CostFunction.__init__(self)
 
     def compute_cost_symb(self, pred_batch, tg_batch):
-        return -T.mean(T.sum(T.log(pred_batch) * tg_batch, axis=1))
+        return -T.mean(T.log(T.sum(pred_batch * tg_batch, axis=1)))
 
     def compute_cost_numpy(self, pred_batch, tg_batch):
         return -np.mean(np.sum(math.log(pred_batch) * tg_batch, axis=1))

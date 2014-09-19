@@ -2,240 +2,165 @@ __author__ = 'adeb'
 
 import numpy as np
 
-from scipy.ndimage.interpolation import rotate
 
-
-def create_pick_features(config_ini):
+def create_pick_features(config):
     """
     Factory function to create the objects responsible for picking the patches
     """
-    how_patch = config_ini.pick_patch["how"]
-    patch_width = config_ini.pick_patch["patch_width"]
-    if how_patch == "3D":
-        pick_patch = PickPatch3DSimple(patch_width)
-    elif how_patch == "2Dortho":
-        axis = config_ini.pick_patch["axis"]
-        pick_patch = PickPatch2Dorthogonal(patch_width, axis)
-    elif how_patch == "2DorthoRotated":
-        axis = config_ini.pick_patch["axis"]
-        max_degree_rotation = config_ini.pick_patch["max_degree_rotation"]
-        pick_patch = PickPatchSlightlyRotated(patch_width, axis, max_degree_rotation)
-    elif how_patch == "ultimate":
-        pick_patch = PickUltimate(patch_width)
+    ls_pick_features = []
+
+    for pick_features_dictionary in config.pick_features:
+        ls_pick_features.extend(create_pick_features_from_dict(pick_features_dictionary))
+
+    pick_features = PickComposed(ls_pick_features)
+
+    return pick_features
+
+
+def create_pick_features_from_dict(pick_feature_dictionary):
+    """
+    Factory function to create the objects responsible for picking the patches
+    """
+    ls_pick_features = []
+    how = pick_feature_dictionary["how"]
+
+    ## Patch-based features
+    if how == "3D":
+        patch_width = pick_feature_dictionary["patch_width"]
+        scale = pick_feature_dictionary["scale"]
+        ls_pick_features.append(PickPatch3D(patch_width, scale))
+    elif how == "2Dortho":
+        ls_axis = pick_feature_dictionary["axis"]
+        patch_width = pick_feature_dictionary["patch_width"]
+        scale = pick_feature_dictionary["scale"]
+        for axis in ls_axis:
+            ls_pick_features.append(PickPatch2D(patch_width, axis, scale))
+    # elif how_patch == "2DorthoRotated":
+    #     axis = config_ini.pick_patch["axis"]
+    #     max_degree_rotation = config_ini.pick_patch["max_degree_rotation"]
+    #     pick_patch = PickPatchSlightlyRotated(patch_width, axis, max_degree_rotation)
+    # elif how == "grid_patches":
+    #     patch_width = pick_feature_dictionary["patch_width"]
+    #     ls_pick_features.append(PickLocalGridOfPatches(patch_width))
+
+    ## Geometric features
+    elif how == "centroid":
+        n_features = pick_feature_dictionary["n_features"]
+        ls_pick_features.append(PickCentroidDistances(n_features))
+    elif how == "xyz":
+        ls_pick_features.append(PickXYZ())
+
     else:
-        print "error in pick_patch"
+        print "pick_features not specified"
         return
 
-    return pick_patch
+    return ls_pick_features
 
 
 class PickFeatures():
     """
     Manage the selection and extraction of patches in an mri image from their central voxels
     """
-    def __init__(self, n_features):
+    def __init__(self, n_features, required_pad=0, n_types_of_features=1):
         self.n_features = n_features
+        self.required_pad = required_pad
+        self.n_types_of_features = n_types_of_features
 
-    def pick(self, vx, mri, label):
+    def pick(self, vx, mri, label, region_centroids=None):
+        """
+        Returns a list of tuples of the form (t0, ...), t0 being the extracted features. Additional information can be
+        added in each tuple.
+        """
         raise NotImplementedError
+
+    def has_instance_of(self, class_object):
+        return isinstance(self, class_object)
 
 
 class PickXYZ(PickFeatures):
     def __init__(self):
         PickFeatures.__init__(self, 3)
 
-    def pick(self, vx, mri, label):
-        idx_patch = 0
-        patch = vx
-        return patch, idx_patch
+    def pick(self, vx, mri, label, region_centroids=None):
+        return vx, None
 
 
-class PickPatch2D(PickFeatures):
-    def __init__(self, patch_width):
-        PickFeatures.__init__(self, patch_width**2)
+class PickCentroidDistances(PickFeatures):
+    def __init__(self, n_features):
+        PickFeatures.__init__(self, n_features)
+
+    def pick(self, vx, mri, label, region_centroids=None):
+        n_points = vx.shape[0]
+        distances = np.zeros((n_points, self.n_features))
+        for i in xrange(n_points):
+            distances[i] = region_centroids.compute_scaled_distances(vx[i])
+
+        return distances, None
+
+
+class PickPatch(PickFeatures):
+    def __init__(self, n_in, patch_width, scale=1):
+        PickFeatures.__init__(self, n_in)
         self.patch_width = patch_width
+        self.scale = scale
+        self.required_pad = 1 + patch_width * scale / 2
 
-    def pick(self, vx, mri, label):
+    def pick(self, vx, mri, label, region_centroids=None):
         n_vx = vx.shape[0]
         idx_patch = np.zeros((n_vx, self.n_features), dtype=int)
         patch = np.zeros((n_vx, self.n_features), dtype=np.float32)
-        self.pick_virtual2d(patch, idx_patch, vx, mri, label)
-        return patch, idx_patch
+        for i in xrange(n_vx):
+            patch_temp = self.extract_patch(mri, vx[i], self.scale * self.patch_width)
+            patch_temp = self.rebin(patch_temp, (self.patch_width,) * len(patch_temp.shape))
+            patch[i, :] = patch_temp.ravel()
+        return patch, [idx_patch]
 
-    def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
+    def extract_patch(self, mri, vx, patch_width):
         raise NotImplementedError
-
-    def find_limits_along_axis(self, axis, vx, patch_width, dims_mri):
-        radius = patch_width / 2
-        s1_inf = vx[:, axis] - radius
-        s1_sup = vx[:, axis] + radius + 1
-        s2_inf = np.zeros(s1_inf.shape, dtype=s1_inf.dtype)
-        s2_sup = patch_width * np.ones(s1_inf.shape, dtype=s1_inf.dtype)
-
-        # Too low
-        s1_too_low = s1_inf < 0
-        s2_inf[s1_too_low] = -s1_inf[s1_too_low]
-        s1_inf[s1_too_low] = 0
-
-        # Too high
-        s1_too_high = s1_sup > dims_mri[axis]
-        s2_sup[s1_too_high] = patch_width - (s1_sup[s1_too_high] - dims_mri[axis])
-        s1_sup[s1_too_high] = dims_mri[axis]
-
-        assert (s1_sup - s1_inf == s2_sup - s2_inf).all()
-
-        return s1_inf, s1_sup, s2_inf, s2_sup
-
-
-class PickPatch2Dorthogonal(PickPatch2D):
-    """
-    Pick a 2D patch centered on the voxels. No rotation
-    """
-    def __init__(self, patch_width, orthogonal_axis):
-        PickPatch2D.__init__(self, patch_width)
-        self.orhtogonal_axis = orthogonal_axis
-
-    def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
-        dims = mri.shape
-
-        parallel_axis = range(3)
-        del parallel_axis[self.orhtogonal_axis]
-        s1_inf_0, s1_sup_0, s2_inf_0, s2_sup_0 = self.find_limits_along_axis(parallel_axis[0], vx,
-                                                                             self.patch_width, dims)
-        s1_inf_1, s1_sup_1, s2_inf_1, s2_sup_1 = self.find_limits_along_axis(parallel_axis[1], vx,
-                                                                             self.patch_width, dims)
-
-        for i in xrange(idx_patch.shape[0]):
-
-            s1 = [0]*3
-            s1[self.orhtogonal_axis] = vx[i, self.orhtogonal_axis]
-            s1[parallel_axis[0]] = slice(s1_inf_0[i], s1_sup_0[i])
-            s1[parallel_axis[1]] = slice(s1_inf_1[i], s1_sup_1[i])
-
-            s2 = [0]*2
-            s2[0] = slice(s2_inf_0[i], s2_sup_0[i])
-            s2[1] = slice(s2_inf_1[i], s2_sup_1[i])
-
-            patch_temp = np.zeros((self.patch_width,)*2)
-            patch_temp[s2[0], s2[1]] = mri[s1[0], s1[1], s1[2]]
-            patch[i, :] = patch_temp.ravel()
-
-
-class PickPatch2DorthogonalAveraged(PickPatch2D):
-    """
-    Pick a 2D patch centered on the voxels. No rotation
-    """
-    def __init__(self, patch_width, orthogonal_axis, scale):
-        PickPatch2D.__init__(self, patch_width)
-        self.orhtogonal_axis = orthogonal_axis
-        self.scale = scale
-
-    def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
-        dims = mri.shape
-        patch_width_global = self.patch_width * self.scale
-
-        parallel_axis = range(3)
-        del parallel_axis[self.orhtogonal_axis]
-        s1_inf_0, s1_sup_0, s2_inf_0, s2_sup_0 = self.find_limits_along_axis(parallel_axis[0], vx,
-                                                                             patch_width_global, dims)
-        s1_inf_1, s1_sup_1, s2_inf_1, s2_sup_1 = self.find_limits_along_axis(parallel_axis[1], vx,
-                                                                             patch_width_global, dims)
-
-        for i in xrange(idx_patch.shape[0]):
-
-            s1 = [0]*3
-            s1[self.orhtogonal_axis] = vx[i, self.orhtogonal_axis]
-            s1[parallel_axis[0]] = slice(s1_inf_0[i], s1_sup_0[i])
-            s1[parallel_axis[1]] = slice(s1_inf_1[i], s1_sup_1[i])
-
-            s2 = [0]*2
-            s2[0] = slice(s2_inf_0[i], s2_sup_0[i])
-            s2[1] = slice(s2_inf_1[i], s2_sup_1[i])
-
-            patch_temp = np.zeros((self.patch_width* self.scale,)*2)
-            patch_temp[s2[0], s2[1]] = mri[s1[0], s1[1], s1[2]]
-            patch_temp = self.rebin(patch_temp, (self.patch_width, self.patch_width))
-            patch[i, :] = patch_temp.ravel()
 
     def rebin(self, patch, new_shape):
-        sh = new_shape[0], patch.shape[0]//new_shape[0], new_shape[1], patch.shape[1]//new_shape[1]
-        return patch.reshape(sh).mean(-1).mean(1)
+        """
+        Convert patch into a new patch of shape new_shape by averaging the pixels.
+        """
+        ls_sh = []
+        for sh_old, sh_new in zip(patch.shape, new_shape):
+            ls_sh.extend([sh_new, sh_old//sh_new])
+
+        patch_temp = patch.reshape(tuple(ls_sh))
+        for i in xrange(len(new_shape)):
+            patch_temp = patch_temp.mean(i+1)
+        return patch_temp
 
 
-class PickPatchSlightlyRotated(PickPatch2D):
+class PickPatch2D(PickPatch):
     """
-    Pick a 2D patch centered on the voxels. Brains are slightly rotated.
+    Pick a 2D patch centered on the voxels. The final patch has a width of patch_width but captures a window of
+    patch_width * scale width which is averaged.
     """
-    def __init__(self, patch_width, orhtogonal_axis, max_degree_rotation):
-        PickPatch2D.__init__(self, patch_width)
-        self.orthogonal_axis = orhtogonal_axis
-        self.max_degree_rotation = max_degree_rotation
+    def __init__(self, patch_width, orthogonal_axis, scale=1):
+        PickPatch.__init__(self, patch_width**2, patch_width, scale)
+        self.orthogonal_axis = orthogonal_axis
+        self.parallel_axis = range(3)
+        del self.parallel_axis[self.orthogonal_axis]
 
-    def pick_virtual2d(self, patch, idx_patch, vx, mri, label):
-        dims = mri.shape
+    def extract_patch(self, mri, single_vx, patch_width):
+        s = [slice(None)]*3
+        s[self.orthogonal_axis] = single_vx[self.orthogonal_axis]
+        mri_slice = mri[s]
 
-        parallel_axis = range(3)
-        del parallel_axis[self.orthogonal_axis]
-        s1_inf_0, s1_sup_0, s2_inf_0, s2_sup_0 = self.find_limits_along_axis(parallel_axis[0], vx,
-                                                                             self.patch_width, dims)
-        s1_inf_1, s1_sup_1, s2_inf_1, s2_sup_1 = self.find_limits_along_axis(parallel_axis[1], vx,
-                                                                             self.patch_width, dims)
-        s1_inf_2, s1_sup_2, s2_inf_2, s2_sup_2 = self.find_limits_along_axis(parallel_axis[2], vx,
-                                                                             self.patch_width, dims)
+        vx_slice = single_vx[self.parallel_axis]
 
-        for i in xrange(idx_patch.shape[0]):
+        radius = patch_width / 2
 
-            cube = np.zeros((self.patch_width,)*3)
-
-            s1 = [0]*3
-            s1[0] = slice(s1_inf_0[i], s1_sup_0[i])
-            s1[1] = slice(s1_inf_1[i], s1_sup_1[i])
-            s1[2] = slice(s1_inf_2[i], s1_sup_2[i])
-
-            s2 = [0]*3
-            s2[0] = slice(s2_inf_0[i], s2_sup_0[i])
-            s2[1] = slice(s2_inf_1[i], s2_sup_1[i])
-            s2[2] = slice(s2_inf_2[i], s2_sup_2[i])
-
-            cube[s2[0], s2[1]] = cube[s1[0], s1[1], s1[2]]
-            cube = rotate(cube, np.random.uniform(-self.max_degree_rotation, -self.max_degree_rotation), axes=(0, 1))
-            cube = rotate(cube, np.random.uniform(-self.max_degree_rotation, -self.max_degree_rotation), axes=(1, 2))
-            cube = rotate(cube, np.random.uniform(-self.max_degree_rotation, -self.max_degree_rotation), axes=(2, 0))
-
-            radius = self.patch_width / 2
-            central_vx_cube = np.array(cube.shape)/2
-            li = central_vx_cube - radius
-            ls = central_vx_cube + radius + 1
-            li[self.orthogonal_axis] = central_vx_cube[self.orthogonal_axis]
-            ls[self.orthogonal_axis] = central_vx_cube[self.orthogonal_axis]+1
-
-            patch[i] = cube[li[0]:ls[0], li[1]:ls[1], li[2]:ls[2]].ravel()
+        return mri_slice[vx_slice[0] - radius:vx_slice[0] + radius + 1,
+               vx_slice[1] - radius:vx_slice[1] + radius + 1]
 
 
-class PickPatch3D(PickFeatures):
-    def __init__(self, patch_width):
-        PickFeatures.__init__(self, patch_width**3)
-        self.patch_width = patch_width
+class PickPatch3D(PickPatch):
+    def __init__(self, patch_width, scale=1):
+        PickPatch.__init__(self, patch_width**3, patch_width, scale)
 
-    def pick(self, vx, mri, label):
-        n_vx = vx.shape[0]
-        idx_patch = np.zeros((n_vx, self.n_features), dtype=int)
-        patch = np.zeros((n_vx, self.n_features), dtype=np.float32)
-        self.pick_virtual3d(patch, idx_patch, vx, mri, label)
-        return patch, idx_patch
-
-    def pick_virtual3d(self, patch, idx_patch, vx, mri, label):
-        raise NotImplementedError
-
-
-class PickPatch3DSimple(PickPatch3D):
-    """
-    Pick 3D patches centered on the voxels. No rotation
-    """
-    def __init__(self, patch_width):
-        PickPatch3D.__init__(self, patch_width)
-
-    def pick_virtual3d(self, patch, idx_patch, vx, mri, label):
+    def extract_patch(self, mri, single_vx, patch_width):
         dims = mri.shape
         radius = self.patch_width / 2
 
@@ -245,12 +170,61 @@ class PickPatch3DSimple(PickPatch3D):
             v[v >= dims[j]] = dims[j]-1
             return v
 
-        for i in xrange(idx_patch.shape[0]):
-            vx_cur = vx[i]
-            v_axis = []
-            for ax in range(3):
-                v_axis.append(crop(ax, vx_cur))
+        v_axis = []
+        for ax in range(3):
+            v_axis.append(crop(ax, single_vx))
 
-            x, y, z = np.meshgrid(v_axis[0], v_axis[1], v_axis[2])
-            idx_patch[i] = np.ravel_multi_index((x.ravel(), y.ravel(), z.ravel()), dims)
-            patch[i] = mri[x, y, z].ravel()
+        x, y, z = np.meshgrid(v_axis[0], v_axis[1], v_axis[2])
+        # idx_patch = np.ravel_multi_index((x.ravel(), y.ravel(), z.ravel()), dims)
+        patch = mri[x, y, z]
+
+        return patch
+
+
+class PickComposed(PickFeatures):
+    """
+    PickFeatures subclass composed of a list of PickFeatures objects. Method pick returns an array of features. This
+    array is the concatenation of the features arrays picked by each PickFeatures object.
+    Attributes:
+        ls_pick_features (list of PickFeatures objects): list containing the PickFeatures
+        ls_slices_different_features (list of slices): slices corresponding to each set of homogeneous features
+    """
+    def __init__(self, ls_pick_patch):
+        self.ls_pick_features = ls_pick_patch
+        self.ls_slices_different_features = []
+        n_features = 0
+        required_pad = 0
+        c = 0
+        for pick_patch in ls_pick_patch:
+            self.ls_slices_different_features.append(slice(c, c+pick_patch.n_features))
+            c += pick_patch.n_features
+            n_features += pick_patch.n_features
+            if required_pad < pick_patch.required_pad:
+                required_pad = pick_patch.required_pad
+        PickFeatures.__init__(self, n_features, required_pad, len(ls_pick_patch))
+
+    def pick(self, vx, mri, label, region_centroids=None):
+        n_vx = vx.shape[0]
+        patch = np.zeros((n_vx, self.n_features), dtype=np.float32)
+        ls_extra_info = []
+        for slice_features, pick_patch in zip(self.ls_slices_different_features, self.ls_pick_features):
+            res = pick_patch.pick(vx, mri, label, region_centroids)
+            patch[:, slice_features] = res[0]
+            if res[1] is not None:
+                ls_extra_info.append(None)
+            else:
+                ls_extra_info.append(res[1:])
+
+        return patch, ls_extra_info
+
+    def has_instance_of(self, class_object):
+        for pick_patch in self.ls_pick_features:
+            if isinstance(pick_patch, class_object):
+                return True
+        return False
+
+    def __iter__(self):
+        return self.ls_pick_features.__iter__()
+
+    def next(self):
+        return self.ls_pick_features.next()

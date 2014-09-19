@@ -21,7 +21,7 @@ def create_pick_voxel(config_ini):
         print "error in pick_voxel"
         return
 
-    n_patch_per_voxel = config_ini.general["n_patch_per_voxel"]
+    n_patch_per_voxel = 1
 
     if how_vx == "all":
         extract_voxel = ExtractVoxelAll(n_patch_per_voxel)
@@ -41,19 +41,18 @@ class PickVoxel():
     """
     Manage the selection and extraction of voxels in an mri image
     """
-    def __init__(self, select_region, extract_voxel, batch_size=10000):
+    def __init__(self, select_region, extract_voxel):
         self.select_region = select_region
         self.extract_voxel = extract_voxel
-        self.batch_size = batch_size
 
-    def pick(self, n_vx, label, verbose=False):
+    def pick(self, n_vx, label, verbose=False, batch_size=10000):
         # Select the region in which voxels are going to be extracted
         idx_region = self.select_region.select(label)
         region = label.ravel()[idx_region]
         # Once the region is selected, extract the voxels
         if n_vx is None:
             n_vx = len(idx_region)
-        return self.extract_voxel.extract(n_vx, idx_region, region, label.shape, self.batch_size, verbose)
+        return self.extract_voxel.extract(n_vx, idx_region, region, label.shape, batch_size, verbose)
 
 
 class SelectRegion():

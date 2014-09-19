@@ -64,8 +64,6 @@ class LearningUpdateGDMomentum(LearningUpdate):
     def compute_updates(self, params, grads):
         updates = OrderedDict()
         for param_i, grad_i in zip(params, grads):
-            if param_i in updates:
-                continue
             diff = share(np.zeros(param_i.get_value().shape, dtype=theano.config.floatX), "diff")
             update_diff = self.momentum * diff - self.learning_rate * grad_i
             updates[param_i] = param_i + update_diff

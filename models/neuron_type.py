@@ -19,6 +19,16 @@ class NeuronType():
         return "Neuron type: {}".format(self.name)
 
 
+class NeuronLinear(NeuronType):
+    name = "Linear"
+
+    def __init__(self):
+        NeuronType.__init__(self)
+
+    def activation_function(self, x):
+        return x
+
+
 class NeuronTanh(NeuronType):
     name = "Tanh"
 

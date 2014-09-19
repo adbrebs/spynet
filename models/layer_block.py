@@ -6,6 +6,7 @@ import numpy as np
 import theano
 from theano.tensor.signal import downsample
 from theano.tensor.nnet import conv, conv3d2d
+from theano.tensor.shared_randomstreams import RandomStreams
 
 from spynet.utils.utilities import share, get_h5file_data
 from spynet.models.max_pool_3d import max_pool_3d
@@ -42,11 +43,12 @@ class LayerBlock():
         """
         pass
 
+    def update_params(self):
+        pass
+
     def __str__(self):
-        """
-        Should end with \n.
-        """
-        raise NotImplementedError
+        msg = "[{}] \n".format(self.name)
+        return msg
 
 
 class LayerBlockIdentity(LayerBlock):
@@ -61,9 +63,47 @@ class LayerBlockIdentity(LayerBlock):
     def forward(self, x, batch_size):
         return x
 
-    def __str__(self):
-        msg = "[{}] \n".format(self.name)
-        return msg
+
+class LayerBlockNoise(LayerBlock):
+    """
+    Noise block layer that adds gaussian noise on the fly
+    """
+    name = "Noising Layer block"
+
+    def __init__(self):
+        LayerBlock.__init__(self)
+        numpy_rng = np.random.RandomState(123)
+        self.theano_rng = RandomStreams(numpy_rng.randint(2**30))
+
+    def forward(self, x, batch_size):
+        return x + self.theano_rng.normal(size=x.shape, avg=0, std=0.2, dtype=theano.config.floatX)
+
+
+class LayerBlockMultiplication(LayerBlock):
+    """
+    Block that multiplies the input elementwise by a vector of the same size
+    """
+    name = "Multiplication Layer block"
+
+    def __init__(self, vec):
+        LayerBlock.__init__(self)
+        self.vec = share(vec)
+
+    def forward(self, x, batch_size):
+        return x * self.vec
+
+
+class LayerBlockNormalization(LayerBlock):
+    """
+    Block that normalizes the input so it sums to one
+    """
+    name = "Normalization Layer block"
+
+    def __init__(self):
+        LayerBlock.__init__(self)
+
+    def forward(self, x, batch_size):
+        return x / theano.tensor.sum(x)
 
 
 class LayerBlockOfNeurons(LayerBlock):
@@ -95,7 +135,7 @@ class LayerBlockOfNeurons(LayerBlock):
         b_values = 0.1 + np.zeros(b_shape, dtype=theano.config.floatX)  # Slightly positive for RELU units
         self.b = share(b_values, "b")
 
-        self.params = [self.w, self.b]
+        self.update_params()
 
     def compute_bound_parameters_virtual(self):
         raise NotImplementedError
@@ -107,6 +147,9 @@ class LayerBlockOfNeurons(LayerBlock):
     def load_parameters(self, h5file, name):
         self.w.set_value(get_h5file_data(h5file, name + "/w"))
         self.b.set_value(get_h5file_data(h5file, name + "/b"))
+
+    def update_params(self):
+        self.params = [self.w, self.b]
 
     def __str__(self):
         msg = "[{}] with [{}] \n".format(self.name, self.neuron_type)
@@ -137,6 +180,10 @@ class LayerBlockFullyConnected(LayerBlockOfNeurons):
 
     def compute_bound_parameters_virtual(self):
         return np.sqrt(6. / (self.n_in + self.n_out))
+
+    def set_w(self, new_w):
+        self.w.set_value(new_w)
+        self.n_in, self.n_out = new_w.shape
 
     def forward(self, x, batch_size):
         return self.neuron_type.activation_function(theano.tensor.dot(x, self.w) + self.b)

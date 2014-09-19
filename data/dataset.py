@@ -43,6 +43,10 @@ class Dataset(object):
         self.n_data = None
         self.is_perm = False
 
+        # Avoid sharing multiple times the variables (avoid copies in memory)
+        self.shared_inputs_created = False
+        self.shared_outputs_created = False
+
     @property
     def inputs(self):
         return self._inputs
@@ -54,7 +58,11 @@ class Dataset(object):
 
     @property
     def inputs_shared(self):
-        self._inputs_shared = share(self.inputs)
+        if ~self.shared_inputs_created:
+            self._inputs_shared = share(self.inputs)
+            self.shared_inputs_created = True
+        else:
+            self._inputs_shared.set_value(self.inputs)
         return self._inputs_shared
 
     @inputs_shared.setter
@@ -72,7 +80,11 @@ class Dataset(object):
 
     @property
     def outputs_shared(self):
-        self._outputs_shared = share(self.outputs)
+        if ~self.shared_inputs_created:
+            self._outputs_shared = share(self.outputs)
+            self.shared_outputs_created = True
+        else:
+            self._outputs_shared.set_value(self.outputs)
         return self._outputs_shared
 
     @outputs_shared.setter
@@ -129,7 +141,7 @@ class Dataset(object):
     def read_virtual(self, h5file):
         pass
 
-    def split_dataset(self, proportion):
+    def split_datapoints_proportion(self, proportion):
         """
         Split a dataset in two sub datasets according to proportion.
         """
@@ -137,23 +149,64 @@ class Dataset(object):
             raise Exception("the proportion to split the dataset should be between 0 and 1")
 
         split = int(proportion * self.n_data)
-        ds1 = self.duplicate_dataset_slice(slice(0, split))
-        ds2 = self.duplicate_dataset_slice(slice(split, None))
+        return self.split_datapoints_size(split)
+
+    def split_datapoints_size(self, split):
+        """
+        Split a dataset in two sub datasets at index split.
+        """
+        if split < 0 or split >= self.n_data:
+            raise Exception("the split index should be between 0 and the size of the dataset")
+        ds1 = self.duplicate_datapoints_slice(slice(0, split))
+        ds2 = self.duplicate_datapoints_slice(slice(split, None))
         return ds1, ds2
 
-    def duplicate_dataset_slice(self, slice_idx):
+    def duplicate_datapoints_slice(self, slice_idx):
         """
         Create a Dataset that correspond to a slice of the Dataset calling the function.
         """
         ds = type(self)()
         ds.inputs = self.inputs[slice_idx]
         ds.outputs = self.outputs[slice_idx]
-        self.duplicate_dataset_slice_virtual(ds, slice_idx)
+        self.duplicate_datapoints_slice_virtual(ds, slice_idx)
         return ds
 
-    def duplicate_dataset_slice_virtual(self, ds, slice_idx):
+    def duplicate_datapoints_slice_virtual(self, ds, slice_idx):
         """
         In case there are more attributes to slice.
         ds.your_attribute = self.your_attribute[slice_idx]
         """
         pass
+
+    def add_features(self, data_to_add):
+        """
+        Add features to the current dataset.
+        """
+        assert self.inputs.shape[0] == data_to_add.shape[0]
+
+        self.inputs = np.concatenate((self.inputs, data_to_add), axis=1)
+        self.n_in_features += data_to_add.shape[1]
+
+
+class Scaler():
+    """
+    Class responsible for scaling data. The slices of the data features are specified in the list ls_slices.
+    The lists ls_slices, ls_means and ls_stds correspond.
+    """
+    def __init__(self, ls_slices):
+        self.ls_slices = ls_slices
+        self.ls_means = []
+        self.ls_stds = []
+
+    def compute_parameters(self, data):
+        self.ls_means = []
+        self.ls_stds = []
+        for s in self.ls_slices:
+            self.ls_means.append(data[:, s].mean(axis=0))
+            self.ls_stds.append(data[:, s].std(axis=0))
+
+    def scale(self, data):
+        for i, s in enumerate(self.ls_slices):
+            zo = self.ls_stds[i] != 0
+            data[:, s] -= self.ls_means[i]
+            data[:, s][:, zo] /= self.ls_stds[i][zo]

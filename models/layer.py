@@ -33,6 +33,9 @@ class Layer():
         """
         pass
 
+    def update_params(self):
+        pass
+
     def __str__(self):
         """
         Should end with \n.
@@ -59,8 +62,8 @@ class LayerDivideFeatures(Layer):
     Divide the output features of the previous layer so that different blocks can be used in the next layer.
     Attributes:
         ls_split_idx: List of indices of where the input features should be divided. For example, if
-            ls_split_idx = [0 700 3000], the features will be divided in two: the first [0 700] features on one
-            side and the other [700 3000] features on the other side.
+            ls_split_idx = [0 700 3000], the features will be divided in two: the first [0 699] features on one
+            side and the other [700 2999] features on the other side.
     """
     def __init__(self, ls_split_idx):
         Layer.__init__(self)
@@ -92,9 +95,7 @@ class LayerOfBlocks(Layer):
         Layer.__init__(self)
         self.ls_layer_blocks = ls_layer_blocks
 
-        self.params = []
-        for l in self.ls_layer_blocks:
-            self.params += l.params
+        self.update_params()
 
     def forward(self, ls_inputs, batch_size):
         ls_outputs = []
@@ -110,11 +111,20 @@ class LayerOfBlocks(Layer):
         for i, l in enumerate(self.ls_layer_blocks):
             l.load_parameters(h5file, name + "/block" + str(i))
 
+    def update_params(self):
+        self.params = []
+        for l in self.ls_layer_blocks:
+            l.update_params()
+            self.params += l.params
+
     def __str__(self):
         msg = "Layer composed of the following block(s):\n"
         for i, l in enumerate(self.ls_layer_blocks):
             msg += "Block " + str(i) + ":\n" + l.__str__() + "\n"
         return msg
+
+    def get_layer_block(self, idx_block):
+        return self.ls_layer_blocks[idx_block]
 
 
 def convert_blocks_into_feed_forward_layers(ls_layer_blocks):
