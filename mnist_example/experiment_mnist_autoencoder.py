@@ -7,10 +7,9 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 from shutil import copy2
 import inspect
-from spynet.utils.utilities import analyse_classes
-from spynet.data.dataset import Dataset, Scaler
-from spynet.mnist_example.network_mnist import NetworkMNIST
+from spynet.data.dataset import Dataset
 from spynet.models.network import *
+from spynet.models.neuron_type import *
 from spynet.training.trainer import *
 from spynet.training.monitor import *
 from spynet.training.parameters_selector import *
@@ -38,51 +37,52 @@ class ExperimentMNIST(Experiment):
         if not os.path.isfile(training_data_path):
             transform_mnist_to_h5()
 
-        prop_validation = 0.3  # Percentage of the training dataset that is used for validation (early stopping)
+        prop_validation = 0.15  # Percentage of the training dataset that is used for validation (early stopping)
         ds_training = Dataset.create_and_read(training_data_path)
         ds_validation, ds_training = ds_training.split_dataset_proportions([prop_validation, 1-prop_validation])
         ds_testing = Dataset.create_and_read(testing_data_path)
-
-        # Few stats about the targets
-        analyse_classes(np.argmax(ds_training.outputs, axis=1), "Training data")
+        ds_training.outputs = ds_training.inputs
+        ds_validation.outputs = ds_validation.inputs
+        ds_testing.outputs = ds_testing.inputs
 
         # Scale the data
-        s = Scaler([slice(None, None)])
-        s.compute_parameters(ds_training.inputs)
-        s.scale(ds_training.inputs)
-        s.scale(ds_validation.inputs)
-        s.scale(ds_testing.inputs)
+        # s = Scaler([slice(None, None)])
+        # s.compute_parameters(ds_training.inputs)
+        # s.scale(ds_training.inputs)
+        # s.scale(ds_validation.inputs)
+        # s.scale(ds_testing.inputs)
 
         ###### Create the network
 
-        net = NetworkMNIST()
-        net.init(28, 28, 10)
+        # net = NetworkMNIST()
+        net = AutoEncoder()
+        net.init([28**2, 256, 28**2], dropout=True, dropout_p=[0.5], neuron_function=NeuronRELU())
         print net
 
         ###### Configure the trainer
 
         # Cost function
-        cost_function = CostNegLL()
+        cost_function = CostMSE()
 
         # Learning update
-        learning_rate = 0.13
+        learning_rate = 0.01
         momentum = 0.5
         lr_update = LearningUpdateGDMomentum(learning_rate, momentum)
 
         # Create monitors and add them to the trainer
-        err_training = MonitorErrorRate(1, "Training", ds_training)
-        err_testing = MonitorErrorRate(1, "Testing", ds_testing)
-        err_validation = MonitorErrorRate(1, "Validation", ds_validation)
+        err_training = MonitorMSE(1, "Training", ds_training)
+        err_testing = MonitorMSE(1, "Testing", ds_testing)
+        err_validation = MonitorMSE(1, "Validation", ds_validation)
 
         # Create stopping criteria and add them to the trainer
-        max_epoch = MaxEpoch(300)
+        max_epoch = MaxEpoch(15)
         early_stopping = EarlyStopping(err_validation)
 
         # Create the network selector
         params_selector = ParamSelectorBestMonitoredValue(err_validation)
 
         # Create the trainer object
-        batch_size = 200
+        batch_size = 20
         t = Trainer(net, cost_function, params_selector, [max_epoch, early_stopping],
                     lr_update, ds_training, batch_size,
                     [err_training, err_testing, err_validation])
@@ -97,7 +97,7 @@ class ExperimentMNIST(Experiment):
 
         ###### Save the network
 
-        net.save_parameters(self.path + "net.net")
+        net.save_parameters(self.path + "netdrop.net")
 
 
 if __name__ == '__main__':

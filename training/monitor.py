@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from matplotlib2tikz import save as tikz_save
 import theano
 import theano.tensor as T
-from spynet.utils.utilities import error_rate, compute_dice, count_common_classes, compute_dice_from_counts
+from spynet.utils.utilities import error_rate, MSE, compute_dice, count_common_classes, compute_dice_from_counts
 
 
 class Monitor():
@@ -33,6 +33,9 @@ class Monitor():
 
         history_index (list of integers): list of the id_minibatch at which the monitor recorded a value
         history_value (list of reals): list of the values monitored at the corresponding id_minibatch of history_index
+
+        output_batch (theano function): returns the network outputs of a batch i
+        output_last_batch (theano function): returns the networks outputs of the last batch (its size may differ)
     """
 
     type = None
@@ -56,30 +59,29 @@ class Monitor():
         self.batch_size = 1000  # Forced to have a small batch size to prevent memory problems
         self.n_batches, self.last_batch_size = divmod(ds.n_data, self.batch_size)
 
-        self.compute_batch_pred = None
-        self.compute_last_batch_pred = None
+        self.output_batch = None
+        self.output_last_batch = None
 
     def init(self, trainer):
 
         self.n_batches_per_interval = int(trainer.n_train_batches / self.n_times_per_epoch)
 
         in_batch = T.matrix('in_batch')  # Minibatch input matrix
-        tg_batch = T.matrix('tg_batch')  # True output (target) of a minibatch
-        # Predicted output of the network for an input batch
-        pred_batch = trainer.net.forward(in_batch, self.batch_size)
+        # Returned output of the network for an input batch
+        out_batch = trainer.net.forward(in_batch, self.batch_size, True)
 
         idx_batch = T.lscalar()
         id1 = idx_batch * self.batch_size
         id2 = (idx_batch + 1) * self.batch_size
-        self.compute_batch_pred = theano.function(
+        self.output_batch = theano.function(
             inputs=[idx_batch],
-            outputs=T.argmax(pred_batch, axis=1),
+            outputs=out_batch,
             givens={in_batch: self.ds.inputs_shared[id1:id2]})
         if self.last_batch_size > 0:
-            pred_batch = trainer.net.forward(in_batch, self.last_batch_size)
-            self.compute_last_batch_pred = theano.function(
+            out_batch = trainer.net.forward(in_batch, self.last_batch_size)
+            self.output_last_batch = theano.function(
                 inputs=[],
-                outputs=T.argmax(pred_batch, axis=1),
+                outputs=out_batch,
                 givens={in_batch: self.ds.inputs_shared[self.ds.n_data-self.last_batch_size:]})
 
     def add_stopping_criteria(self, ls_stopping_criteria):
@@ -155,11 +157,11 @@ class Monitor():
         return None
 
 
-class MonitorErrorRate(Monitor):
+class MonitorMSE(Monitor):
     """
-    Monitor that tracks the error rate of the network on a particular dataset
+    Monitor that tracks the MSE (mean square error) of the network on a particular dataset
     """
-    type = "Error rate"
+    type = "MSE"
 
     def __init__(self, n_times_per_epoch, name, ds):
         Monitor.__init__(self, n_times_per_epoch, name, ds)
@@ -167,12 +169,70 @@ class MonitorErrorRate(Monitor):
     def compute_value(self):
         value = 0
         for i in xrange(self.n_batches):
-            pred = self.compute_batch_pred(i)
+            output = self.output_batch(i)
+            id1 = i * self.batch_size
+            id2 = (i + 1) * self.batch_size
+            value += MSE(output, self.ds.outputs[id1:id2]) * self.batch_size
+        if self.last_batch_size > 0:
+            output = self.output_last_batch()
+            tg = self.ds.outputs[self.ds.n_data-self.last_batch_size:]
+            value += MSE(output, tg) * self.last_batch_size
+        return value / self.ds.n_data
+
+    @staticmethod
+    def is_a_better_than_b(a, b, rate=1):
+        return a < (b*rate)
+
+
+class MonitorClassification(Monitor):
+    """
+    Monitor class used for classification problems in which the network returns a prediction class.
+    """
+    def __init__(self, n_times_per_epoch, name, ds):
+        Monitor.__init__(self, n_times_per_epoch, name, ds)
+        self.compute_batch_classes = None
+        self.compute_last_batch_classes = None
+
+    def init(self, trainer):
+        Monitor.init(self, trainer)
+
+        in_batch = T.matrix('in_batch')  # Minibatch input matrix
+        # Returnerd output of the network for an input batch
+        out_batch = trainer.net.forward(in_batch, self.batch_size, True)
+
+        idx_batch = T.lscalar()
+        id1 = idx_batch * self.batch_size
+        id2 = (idx_batch + 1) * self.batch_size
+        self.compute_batch_classes = theano.function(
+            inputs=[idx_batch],
+            outputs=T.argmax(out_batch, axis=1),
+            givens={in_batch: self.ds.inputs_shared[id1:id2]})
+        if self.last_batch_size > 0:
+            out_batch = trainer.net.forward(in_batch, self.last_batch_size)
+            self.compute_last_batch_classes = theano.function(
+                inputs=[],
+                outputs=T.argmax(out_batch, axis=1),
+                givens={in_batch: self.ds.inputs_shared[self.ds.n_data-self.last_batch_size:]})
+
+
+class MonitorErrorRate(MonitorClassification):
+    """
+    Monitor that tracks the error rate of the network on a particular dataset
+    """
+    type = "Error rate"
+
+    def __init__(self, n_times_per_epoch, name, ds):
+        MonitorClassification.__init__(self, n_times_per_epoch, name, ds)
+
+    def compute_value(self):
+        value = 0
+        for i in xrange(self.n_batches):
+            pred = self.compute_batch_classes(i)
             id1 = i * self.batch_size
             id2 = (i + 1) * self.batch_size
             value += error_rate(pred, np.argmax(self.ds.outputs[id1:id2], axis=1)) * self.batch_size
         if self.last_batch_size > 0:
-            pred = self.compute_last_batch_pred()
+            pred = self.compute_last_batch_classes()
             tg = np.argmax(self.ds.outputs[self.ds.n_data-self.last_batch_size:], axis=1)
             value += error_rate(pred, tg) * self.last_batch_size
         return value / self.ds.n_data
@@ -182,7 +242,7 @@ class MonitorErrorRate(Monitor):
         return a < (b*rate)
 
 
-class MonitorDiceCoefficient(Monitor):
+class MonitorDiceCoefficient(MonitorClassification):
     """
     Monitor that tracks the dice coefficient of the network on a particular dataset
     """
@@ -190,17 +250,17 @@ class MonitorDiceCoefficient(Monitor):
 
     def __init__(self, n_times_per_epoch, name, ds, n_classes):
         self.n_classes = n_classes
-        Monitor.__init__(self, n_times_per_epoch, name, ds)
+        MonitorClassification.__init__(self, n_times_per_epoch, name, ds)
 
     def compute_value(self):
         counts = np.zeros((self.n_classes-1, 3))
         for i in xrange(self.n_batches):
-            pred = self.compute_batch_pred(i)
+            pred = self.compute_batch_classes(i)
             id1 = i * self.batch_size
             id2 = (i + 1) * self.batch_size
             counts += count_common_classes(pred, np.argmax(self.ds.outputs[id1:id2], axis=1), self.n_classes)
         if self.last_batch_size > 0:
-            pred = self.compute_last_batch_pred()
+            pred = self.compute_last_batch_classes()
             tg = np.argmax(self.ds.outputs[self.ds.n_data-self.last_batch_size:], axis=1)
             counts += count_common_classes(pred, tg, self.n_classes)
 

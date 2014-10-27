@@ -39,6 +39,16 @@ class NeuronTanh(NeuronType):
         return T.tanh(x)
 
 
+class NeuronSigmoid(NeuronType):
+    name = "Sigmoid"
+
+    def __init__(self):
+        NeuronType.__init__(self)
+
+    def activation_function(self, x):
+        return T.nnet.sigmoid(x)
+
+
 class NeuronSoftmax(NeuronType):
     name = "SoftMax"
 

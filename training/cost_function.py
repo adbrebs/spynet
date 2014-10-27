@@ -37,6 +37,8 @@ class CostFunction():
         update_type = kwargs["type"]
         if update_type == "MSE":
             cost_function = CostMSE()
+        elif update_type == "NLL":
+            cost_function = CostNegLL()
         else:
             raise Exception("No cost function with this name. Check the config file.")
 

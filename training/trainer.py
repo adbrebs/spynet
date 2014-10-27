@@ -50,10 +50,12 @@ class Trainer():
 
         self.params_selector.init(self.net)
 
-        in_batch = T.matrix('in_batch')  # Minibatch input matrix
-        tg_batch = T.matrix('tg_batch')  # True output (target) of a minibatch
+        # Minibatch input matrix
+        in_batch = T.matrix('in_batch')
+        # True output (target) of a minibatch
+        tg_batch = T.matrix('tg_batch')
         # Predicted output of the network for an input batch
-        pred_batch = self.net.forward(in_batch, self.batch_size)
+        pred_batch = self.net.forward(in_batch, self.batch_size, False)
 
         # Cost the trainer is going to minimize
         cost = self.cost_function.compute_cost_symb(pred_batch, tg_batch)
@@ -118,6 +120,7 @@ class Trainer():
             starting_epoch_time = time.clock()
             epoch_id += 1
             print("Epoch {}".format(epoch_id))
+
             for epoch_minibatch in xrange(1, 1+self.n_train_batches):
 
                 minibatch_id += 1

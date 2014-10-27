@@ -22,10 +22,13 @@ class LayerBlock():
     def __init__(self):
         self.params = []
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         """Return the output of the layer block
         Args:
             x (theano.tensor.TensorType): input of the layer block
+            batch_size (int): size of the batch of data being processed by the network
+            run_time (boolean): equals true when the function is used at runtime and false when it is used during
+                training. This is useful for dropout.
         Returns:
             (theano.tensor.TensorType): output of the layer block
         """
@@ -60,22 +63,47 @@ class LayerBlockIdentity(LayerBlock):
     def __init__(self):
         LayerBlock.__init__(self)
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         return x
 
 
 class LayerBlockNoise(LayerBlock):
     """
-    Noise block layer that adds gaussian noise on the fly
+    Noise layer block that adds a random signal on the fly
     """
-    name = "Noising Layer block"
-
     def __init__(self):
         LayerBlock.__init__(self)
         numpy_rng = np.random.RandomState(123)
         self.theano_rng = RandomStreams(numpy_rng.randint(2**30))
 
-    def forward(self, x, batch_size):
+
+class LayerBlockNoiseDropoutBernoulli(LayerBlockNoise):
+    """
+    Noise block layer that adds bernoulli noise on the fly
+    """
+    name = "Bernoulli Layer block"
+
+    def __init__(self, bernoulli_p):
+        LayerBlockNoise.__init__(self)
+        self.bernoulli_p = bernoulli_p
+
+    def forward(self, x, batch_size, run_time):
+        if run_time:
+            return x * self.bernoulli_p
+        else:
+            return x * self.theano_rng.binomial(size=x.shape, n=1, p=self.bernoulli_p, dtype=theano.config.floatX)
+
+
+class LayerBlockGaussianNoise(LayerBlockNoise):
+    """
+    Noise block layer that adds gaussian noise on the fly
+    """
+    name = "Gaussian noise Layer block"
+
+    def __init__(self):
+        LayerBlockNoise.__init__(self)
+
+    def forward(self, x, batch_size, run_time):
         return x + self.theano_rng.normal(size=x.shape, avg=0, std=0.2, dtype=theano.config.floatX)
 
 
@@ -89,7 +117,7 @@ class LayerBlockMultiplication(LayerBlock):
         LayerBlock.__init__(self)
         self.vec = share(vec)
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         return x * self.vec
 
 
@@ -102,7 +130,7 @@ class LayerBlockNormalization(LayerBlock):
     def __init__(self):
         LayerBlock.__init__(self)
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         return x / theano.tensor.sum(x)
 
 
@@ -185,7 +213,7 @@ class LayerBlockFullyConnected(LayerBlockOfNeurons):
         self.w.set_value(new_w)
         self.n_in, self.n_out = new_w.shape
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         return self.neuron_type.activation_function(theano.tensor.dot(x, self.w) + self.b)
 
     def print_virtual(self):
@@ -215,7 +243,7 @@ class LayerBlockConv2DAbstract(LayerBlockOfNeurons):
 
         self.init_parameters(flt_shape, (flt_shape[0],))
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         img_batch_shape = (batch_size,) + self.in_shape
 
         x = x.reshape(img_batch_shape)
@@ -319,7 +347,7 @@ class LayerBlockConvPool3D(LayerBlockOfNeurons):
 
         return np.sqrt(6. / (fan_in + fan_out))
 
-    def forward(self, x, batch_size):
+    def forward(self, x, batch_size, run_time):
         img_batch_shape = (batch_size,) + self.image_shape
 
         x = x.reshape(img_batch_shape)

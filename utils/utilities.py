@@ -250,6 +250,10 @@ def error_rate_matrix(y1, y2):
     return np.mean(np.argmax(y1, axis=1) != np.argmax(y2, axis=1))
 
 
+def MSE(y1, y2):
+    return np.mean(np.sum((y1 - y2) * (y1 - y2), axis=1))
+
+
 def scale_to_unit_interval(ndar, eps=1e-8):
     """ Scales all values in the ndarray ndar to be between 0 and 1 """
     ndar = ndar.copy()

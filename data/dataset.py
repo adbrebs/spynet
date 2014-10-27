@@ -141,25 +141,32 @@ class Dataset(object):
     def read_virtual(self, h5file):
         pass
 
-    def split_datapoints_proportion(self, proportion):
+    def split_dataset_proportions(self, proportions):
         """
-        Split a dataset in two sub datasets according to proportion.
+        Split the dataset into subdatasets
+        Args:
+          - proportions is the list of proportions of the resulting datasets. It should sum to 1. For example, it could
+            be [0.15, 0.15].
         """
-        if proportion < 0 or proportion > 1:
-            raise Exception("the proportion to split the dataset should be between 0 and 1")
+        proportions = np.asarray(proportions)
+        splits = np.cumsum(proportions * self.n_data)
+        splits = splits.astype(int)
+        return self.split_dataset_indices(splits)
 
-        split = int(proportion * self.n_data)
-        return self.split_datapoints_size(split)
+    def split_dataset_indices(self, indices):
+        """
+        Split a dataset in subdatasets according to a list of indices
+        """
+        if indices[0] < 0 or indices[-1] > self.n_data:
+            raise Exception("the split indices should be between 0 and the size of the dataset")
 
-    def split_datapoints_size(self, split):
-        """
-        Split a dataset in two sub datasets at index split.
-        """
-        if split < 0 or split >= self.n_data:
-            raise Exception("the split index should be between 0 and the size of the dataset")
-        ds1 = self.duplicate_datapoints_slice(slice(0, split))
-        ds2 = self.duplicate_datapoints_slice(slice(split, None))
-        return ds1, ds2
+        ds = []
+        prev_idx = 0
+        for i in indices:
+            ds.append(self.duplicate_datapoints_slice(slice(prev_idx, i)))
+            prev_idx = i
+
+        return ds
 
     def duplicate_datapoints_slice(self, slice_idx):
         """
@@ -186,6 +193,12 @@ class Dataset(object):
 
         self.inputs = np.concatenate((self.inputs, data_to_add), axis=1)
         self.n_in_features += data_to_add.shape[1]
+
+    @staticmethod
+    def create_and_read(file_name):
+        ds = Dataset()
+        ds.read(file_name)
+        return ds
 
 
 class Scaler():

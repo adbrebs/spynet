@@ -39,7 +39,7 @@ class Network(object):
         for l in self.ls_layers:
             self.ls_params += l.params
 
-    def forward(self, in_batch, batch_size):
+    def forward(self, in_batch, batch_size, run_time):
         """Return the output of the network
         Args:
             in_batch (theano.tensor.TensorType): input batch of the network
@@ -48,7 +48,7 @@ class Network(object):
         """
         out_batch = [in_batch]
         for l in self.ls_layers:
-            out_batch = l.forward(out_batch, batch_size)
+            out_batch = l.forward(out_batch, batch_size, run_time)
 
         return out_batch[0]
 
@@ -61,7 +61,7 @@ class Network(object):
             (function): function that returns the output of the network for a given input batch
         """
         in_batch = T.matrix('in_batch')  # Minibatch input matrix
-        y_pred = self.forward(in_batch, batch_size)  # Output of the network
+        y_pred = self.forward(in_batch, batch_size, run_time=True)  # Output of the network
         return theano.function([in_batch], y_pred)
 
     def predict(self, in_numpy_array, batch_size_limit):
@@ -218,15 +218,48 @@ class MLP(Network):
     def __init__(self):
         Network.__init__(self)
 
-    def init(self, ls_layer_size, neuron_function=neuron_type.NeuronRELU()):
+    def init(self, ls_layer_size, dropout=False, dropout_p=None, neuron_function=neuron_type.NeuronRELU()):
         Network.init_common(self, ls_layer_size[0], ls_layer_size[-1])
 
         ls_block = []
         for i in xrange(len(ls_layer_size)-2):
             ls_block.append(LayerBlockFullyConnected(neuron_function, ls_layer_size[i], ls_layer_size[i+1]))
+            if dropout:
+                ls_block.append(LayerBlockNoiseDropoutBernoulli(dropout_p[i]))
 
         # Last layer is softmax
         ls_block.append(LayerBlockFullyConnected(neuron_type.NeuronSoftmax(), ls_layer_size[-2], ls_layer_size[-1]))
+
+        self.ls_layers = convert_blocks_into_feed_forward_layers(ls_block)
+
+        self.concatenate_parameters()
+
+    def save_parameters_virtual(self, h5file):
+        pass
+
+    def load_parameters_virtual(self, h5file):
+        # This function is not working properly, see issue 2 on GitHub
+        pass
+
+
+class AutoEncoder(Network):
+    """
+    autoencoder
+    """
+    def __init__(self):
+        Network.__init__(self)
+
+    def init(self, ls_layer_size, dropout=False, dropout_p=None, neuron_function=neuron_type.NeuronRELU()):
+        Network.init_common(self, ls_layer_size[0], ls_layer_size[-1])
+
+        ls_block = []
+        for i in xrange(len(ls_layer_size)-2):
+            ls_block.append(LayerBlockFullyConnected(neuron_function, ls_layer_size[i], ls_layer_size[i+1]))
+            if dropout:
+                ls_block.append(LayerBlockNoiseDropoutBernoulli(dropout_p[i]))
+
+        # Last layer is softmax
+        ls_block.append(LayerBlockFullyConnected(neuron_function, ls_layer_size[-2], ls_layer_size[-1]))
 
         self.ls_layers = convert_blocks_into_feed_forward_layers(ls_block)
 

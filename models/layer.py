@@ -12,7 +12,7 @@ class Layer():
     def __init__(self):
         self.params = []
 
-    def forward(self, ls_input, batch_size):
+    def forward(self, ls_input, batch_size, run_time):
         """Return the output of the layer block
         Args:
             ls_input (list of theano.tensor.TensorType): input of the layer
@@ -50,7 +50,7 @@ class LayerMergeFeatures(Layer):
     def __init__(self):
         Layer.__init__(self)
 
-    def forward(self, ls_inputs, batch_size):
+    def forward(self, ls_inputs, batch_size, run_time):
         return [T.concatenate(ls_inputs, axis=1)]
 
     def __str__(self):
@@ -69,7 +69,7 @@ class LayerDivideFeatures(Layer):
         Layer.__init__(self)
         self.ls_split_idx = ls_split_idx
 
-    def forward(self, ls_inputs, batch_size):
+    def forward(self, ls_inputs, batch_size, run_time):
         if len(ls_inputs) != 1:
             raise Exception("LayerDivide's input should be of length 1")
         input = ls_inputs[0]
@@ -97,10 +97,10 @@ class LayerOfBlocks(Layer):
 
         self.update_params()
 
-    def forward(self, ls_inputs, batch_size):
+    def forward(self, ls_inputs, batch_size, run_time):
         ls_outputs = []
         for x, layer_block in zip(ls_inputs, self.ls_layer_blocks):
-            ls_outputs.append(layer_block.forward(x, batch_size))
+            ls_outputs.append(layer_block.forward(x, batch_size, run_time))
         return ls_outputs
 
     def save_parameters(self, h5file, name):

@@ -4,9 +4,10 @@ from spynet.utils.utilities import create_directories
 
 
 class Experiment():
-    def __init__(self, name):
-        self.name = name
-        self.path = create_directories(name)
+    def __init__(self, exp_name, data_path):
+        self.data_path = data_path
+        self.name = exp_name
+        self.path = create_directories(exp_name)
         self.copy_file_virtual()
 
     def copy_file_virtual(self):
