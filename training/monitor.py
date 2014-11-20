@@ -57,13 +57,15 @@ class Monitor():
         self.param_selector = None
 
         self.batch_size = 1000  # Forced to have a small batch size to prevent memory problems
-        self.n_batches, self.last_batch_size = divmod(ds.n_data, self.batch_size)
+        self.n_batches = None
+        self.last_batch_size = None
 
         self.output_batch = None
         self.output_last_batch = None
 
     def init(self, trainer):
 
+        self.n_batches, self.last_batch_size = divmod(self.ds.n_data, self.batch_size)
         self.n_batches_per_interval = int(trainer.n_train_batches / self.n_times_per_epoch)
 
         in_batch = T.matrix('in_batch')  # Minibatch input matrix
@@ -78,7 +80,7 @@ class Monitor():
             outputs=out_batch,
             givens={in_batch: self.ds.inputs_shared[id1:id2]})
         if self.last_batch_size > 0:
-            out_batch = trainer.net.forward(in_batch, self.last_batch_size)
+            out_batch = trainer.net.forward(in_batch, self.last_batch_size, True)
             self.output_last_batch = theano.function(
                 inputs=[],
                 outputs=out_batch,
@@ -208,7 +210,7 @@ class MonitorClassification(Monitor):
             outputs=T.argmax(out_batch, axis=1),
             givens={in_batch: self.ds.inputs_shared[id1:id2]})
         if self.last_batch_size > 0:
-            out_batch = trainer.net.forward(in_batch, self.last_batch_size)
+            out_batch = trainer.net.forward(in_batch, self.last_batch_size, True)
             self.compute_last_batch_classes = theano.function(
                 inputs=[],
                 outputs=T.argmax(out_batch, axis=1),

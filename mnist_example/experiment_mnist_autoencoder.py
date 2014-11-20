@@ -56,7 +56,7 @@ class ExperimentMNIST(Experiment):
 
         # net = NetworkMNIST()
         net = AutoEncoder()
-        net.init([28**2, 256, 28**2], dropout=True, dropout_p=[0.5], neuron_function=NeuronRELU())
+        net.init([28**2, 256, 28**2], dropout=True, dropout_p=[0.5], neuron_function=NeuronSigmoid())
         print net
 
         ###### Configure the trainer
@@ -75,7 +75,7 @@ class ExperimentMNIST(Experiment):
         err_validation = MonitorMSE(1, "Validation", ds_validation)
 
         # Create stopping criteria and add them to the trainer
-        max_epoch = MaxEpoch(15)
+        max_epoch = MaxEpoch(50)
         early_stopping = EarlyStopping(err_validation)
 
         # Create the network selector

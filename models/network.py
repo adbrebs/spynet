@@ -196,7 +196,7 @@ class Network(object):
         Update Theano shared variable self.params with numpy variable params.
         """
         for p, p_sym in zip(params, self.ls_params):
-            p_sym.set_value(p)
+            p_sym.set_value(p, borrow=True)
 
     def get_layer(self, idx_layer):
         return self.ls_layers[idx_layer]

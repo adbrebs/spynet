@@ -58,11 +58,11 @@ class Dataset(object):
 
     @property
     def inputs_shared(self):
-        if ~self.shared_inputs_created:
+        if not self.shared_inputs_created:
             self._inputs_shared = share(self.inputs)
             self.shared_inputs_created = True
         else:
-            self._inputs_shared.set_value(self.inputs)
+            self._inputs_shared.set_value(self.inputs, borrow=True)
         return self._inputs_shared
 
     @inputs_shared.setter
@@ -80,11 +80,11 @@ class Dataset(object):
 
     @property
     def outputs_shared(self):
-        if ~self.shared_inputs_created:
+        if not self.shared_outputs_created:
             self._outputs_shared = share(self.outputs)
             self.shared_outputs_created = True
         else:
-            self._outputs_shared.set_value(self.outputs)
+            self._outputs_shared.set_value(self.outputs, borrow=True)
         return self._outputs_shared
 
     @outputs_shared.setter

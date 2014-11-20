@@ -10,6 +10,9 @@ class StoppingCriterion():
     def __init__(self):
         pass
 
+    def init(self):
+        pass
+
     def check_if_stop(self, epoch, minibatch_idx, id_minibatch, verbose=True):
         """
         Check if the stopping criterion is triggered or not.
@@ -45,7 +48,15 @@ class EarlyStopping(StoppingCriterion):
 
         self.patience_increase = patience_increase
         self.improvement_threshold = improvement_threshold
-        self.patience = initial_patience
+        self.initial_patience = initial_patience
+        self.patience = None
+        self.stopping = None
+        self.best_monitor_value = None
+
+        self.init()
+
+    def init(self):
+        self.patience = self.initial_patience
 
         # Link the monitor to the stopping criterion
         self.monitor.add_stopping_criteria([self])
@@ -73,7 +84,7 @@ class EarlyStopping(StoppingCriterion):
         # Fetch the monitor value
         (id_monitoring, monitored_value) = (self.monitor.history_minibatch[-1], self.monitor.history_value[-1])
 
-        if ~self.monitor.is_a_better_than_b(monitored_value, self.best_monitor_value, self.improvement_threshold):
+        if not self.monitor.is_a_better_than_b(monitored_value, self.best_monitor_value, self.improvement_threshold):
             return
 
         # Increase the patience is the value has sufficiently increased

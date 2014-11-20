@@ -173,8 +173,8 @@ class LayerBlockOfNeurons(LayerBlock):
         h5file.create_dataset(name + "/b", data=self.b.get_value(), dtype='f')
 
     def load_parameters(self, h5file, name):
-        self.w.set_value(get_h5file_data(h5file, name + "/w"))
-        self.b.set_value(get_h5file_data(h5file, name + "/b"))
+        self.w.set_value(get_h5file_data(h5file, name + "/w"), borrow=True)
+        self.b.set_value(get_h5file_data(h5file, name + "/b"), borrow=True)
 
     def update_params(self):
         self.params = [self.w, self.b]
@@ -210,7 +210,7 @@ class LayerBlockFullyConnected(LayerBlockOfNeurons):
         return np.sqrt(6. / (self.n_in + self.n_out))
 
     def set_w(self, new_w):
-        self.w.set_value(new_w)
+        self.w.set_value(new_w, borrow=True)
         self.n_in, self.n_out = new_w.shape
 
     def forward(self, x, batch_size, run_time):

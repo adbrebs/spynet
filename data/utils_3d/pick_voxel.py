@@ -175,3 +175,12 @@ class ExtractVoxelAll(ExtractVoxel):
 
     def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
         return idx_region[vx_id:vx_id+batch_size]
+
+
+class ExtractVoxelBoundaries(ExtractVoxel):
+    def __init__(self, n_repeat, weights):
+        ExtractVoxel.__init__(self, n_repeat)
+        self.weights = weights
+
+    def extract_batch_virtual(self, vx_id, batch_size, idx_region, region):
+        return np.array(np.ravel(self.weights).cumsum().searchsorted(np.random.sample(len(vx_id))))

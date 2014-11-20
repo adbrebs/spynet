@@ -37,7 +37,7 @@ class Trainer():
         self.ls_stopping_criteria = ls_stopping_criteria
         self.learning_update = learning_update
         self.batch_size = batch_size
-        self.n_train_batches = ds_training.n_data / self.batch_size
+        self.n_train_batches = None
 
         self.train_minibatch = None
 
@@ -45,8 +45,13 @@ class Trainer():
 
     # Allow to reinitialize the object
     def init(self):
+        self.n_train_batches = self.ds_training.n_data / self.batch_size
+
         for monitor in self.ls_monitors:
             monitor.init(self)
+
+        for stopping_crit in self.ls_stopping_criteria:
+            stopping_crit.init()
 
         self.params_selector.init(self.net)
 

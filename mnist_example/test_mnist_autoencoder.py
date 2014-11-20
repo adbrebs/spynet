@@ -1,5 +1,9 @@
 __author__ = 'adeb'
 
+# Hack to be able to run this module
+import sys
+import os
+sys.path.insert(0, os.path.abspath('../..'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -23,7 +27,7 @@ if __name__ == '__main__':
 
     # Load the network
     net = AutoEncoder()
-    net.init([28**2, 256, 28**2], dropout=True, dropout_p=[0.5], neuron_function=NeuronRELU())
+    net.init([28**2, 256, 28**2], dropout=True, dropout_p=[0.5], neuron_function=NeuronSigmoid())
     net.load_parameters(open_h5file(experiment_path + "netdrop.net"))
 
     i = ds_testing.inputs[0:10,:]
