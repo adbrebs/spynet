@@ -118,13 +118,19 @@ class Trainer():
         epoch_id = minibatch_id = 0
 
         # Record statistics before training really starts
-        self.record(epoch_id, 0, minibatch_id)
+        # self.record(epoch_id, 0, minibatch_id)
 
         stop = False
         while not stop:
             starting_epoch_time = time.clock()
             epoch_id += 1
             print("Epoch {}".format(epoch_id))
+            if epoch_id == 40:
+                self.learning_update.learning_rate.set_value(self.learning_update.learning_rate.get_value()/2)
+            if epoch_id == 60:
+                self.learning_update.learning_rate.set_value(self.learning_update.learning_rate.get_value()/2)
+            if epoch_id == 80:
+                self.learning_update.learning_rate.set_value(self.learning_update.learning_rate.get_value()/2)
 
             for epoch_minibatch in xrange(1, 1+self.n_train_batches):
 

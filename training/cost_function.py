@@ -3,6 +3,7 @@ __author__ = 'adeb'
 import math
 import numpy as np
 import theano.tensor as T
+from spynet.utils.utilities import share
 
 
 class CostFunction():
@@ -71,3 +72,33 @@ class CostNegLL(CostFunction):
 
     def compute_cost_numpy(self, pred_batch, tg_batch):
         return -np.mean(np.sum(math.log(pred_batch) * tg_batch, axis=1))
+
+
+class CostNegLLWeighted(CostFunction):
+    """
+    Negative log-likelihood
+    """
+    def __init__(self, volumes):
+        CostFunction.__init__(self)
+        self.m = share(np.max(volumes))
+        self.n = share(np.min(volumes))
+        volumes = np.concatenate([np.array([0]), volumes])
+
+        self.volumes = share(volumes)
+
+    def compute_cost_symb(self, pred_batch, tg_batch):
+        a = T.argmax(pred_batch, axis=1)
+        b = T.argmax(tg_batch, axis=1)
+        weights = 1 + 10 * (self.volumes[a] / self.volumes[b]) * (self.n/self.m)
+        return -T.mean(weights * T.log(T.sum(pred_batch * tg_batch, axis=1)))
+
+    def compute_cost_numpy(self, pred_batch, tg_batch):
+        return -np.mean(np.sum(math.log(pred_batch) * tg_batch, axis=1))
+
+    def test(self):
+        pred_batch = share(np.reshape(np.array([0, 0.2, 0.8, 0, 0.6, 0.4]), (2,3)))
+        tg_batch = share(np.reshape(np.array([0, 0, 1, 0, 0, 1]), (2,3)))
+        a = T.argmax(pred_batch, axis=1)
+        b = T.argmax(tg_batch, axis=1)
+        weights = 1 + 10 * (self.volumes[a] / self.volumes[b]) * (self.n/self.m)
+        return -T.mean(weights * T.log(T.sum(pred_batch * tg_batch, axis=1)))
