@@ -1,10 +1,16 @@
+This library is not anymore maintained, you should rather have a look to:
+- https://github.com/benanne/Lasagne
+- https://github.com/bartvm/blocks
+- https://github.com/lisa-lab/pylearn2
+
 Neural Networks library on top of Theano
 ==================
             
-Flexible research library implementing basic building blocks of neural networks. In particular, it is easy to:
+Flexible research library to help designing feedforward neural networks with complicated architectures. In particular, it is easy to:
 - use different neuron models and connections in a same layer
+- have blocks of neurons with multiple inputs/outputs, merge/split them to create complicated feedforward architectures.
 - share weights between different parts of the architecture
-- monitor many statistics of the training
+- monitor custom statistics during the training
 - generate data on the fly while the training is running (not finished yet)
 
 Requirements
